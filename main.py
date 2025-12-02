@@ -129,3 +129,24 @@ async def health_check():
         health_status["checks"]["chromadb"] = "unavailable"
     
     return health_status
+
+
+@app.get("/setup-db")
+async def setup_database():
+    """
+    Temporary endpoint to initialize database since Shell is restricted.
+    Runs migrations and creates initial roles.
+    """
+    try:
+        from scripts.init_database import main as init_db_main
+        
+        # Run the initialization script
+        result = init_db_main()
+        
+        if result == 0:
+            return {"status": "success", "message": "Database initialized successfully! Tables created."}
+        else:
+            return {"status": "error", "message": "Database initialization failed. Check logs."}
+            
+    except Exception as e:
+        return {"status": "error", "message": f"Critical error during setup: {str(e)}"}
