@@ -3,9 +3,9 @@ services:
   - type: web
     name: book-management-api
     runtime: python
-    region: oregon  # Change to your preferred region
-    plan: free  # Change to 'starter' or higher for production
-    branch: main  # Change to your git branch name
+    region: oregon
+    plan: free
+    branch: main
     buildCommand: |
       pip install --upgrade pip
       pip install poetry
@@ -25,18 +25,9 @@ services:
       - key: JWT_ALGORITHM
         value: HS256
       - key: GEMINI_API_KEY
-        sync: false  # Set this manually in Render dashboard
+        sync: false
       - key: PORT
-        value: 10000  # Render default
-    
-  # PostgreSQL Database
-  - type: pserv
-    name: book-management-db
-    region: oregon
-    plan: free  # Free tier PostgreSQL
-    databaseName: book_management
-    databaseUser: book_admin
-    ipAllowList: []  # Empty = allow all (you can restrict this)
+        value: 10000
 
 databases:
   - name: book-management-db
