@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: book_management_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ToDoApp!}
+      POSTGRES_DB: ${POSTGRES_DB:-book_management_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-book_management_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - book_network
+
+  api:
+    build: .
+    container_name: book_management_api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:ToDoApp!@postgres/book_management_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./main.py:/app/main.py
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - book_network
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: book_management_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - book_network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+
+networks:
+  book_network:
+    driver: bridge

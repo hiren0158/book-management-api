@@ -1,0 +1,27 @@
+Endpoint,Method,Description,Member (1),Librarian (3),Admin (2),Notes
+/auth/register,POST,Register,✔️,✔️,✔️,Public
+/auth/login,POST,Login,✔️,✔️,✔️,Public
+/auth/refresh,POST,Refresh Token,✔️,✔️,✔️,Public
+/users,GET,List Users,❌,✔️,✔️,Librarian/Admin only
+/users,POST,Create User,❌,✔️,✔️,Librarian/Admin only
+/users/{user_id},GET,Get User,Self-Only,✔️,✔️,Member sees self only
+/users/{user_id},PUT,Update User,Self-Only,✔️,✔️,Member updates self
+/users/{user_id},DELETE,Delete User,❌,❌,✔️,Admin only
+/books,GET,List Books,✔️,✔️,✔️,All can view
+/books,POST,Create Book,❌,✔️,✔️,Librarian/Admin only
+/books/{book_id},GET,Get Book,✔️,✔️,✔️,All can view
+/books/{book_id},PUT,Update Book,❌,✔️,✔️,Librarian/Admin only
+/books/{book_id},DELETE,Delete Book,❌,❌,✔️,Admin only
+/borrowings,POST,Borrow Book,✔️,❌,❌,Only Members can borrow
+/borrowings,GET,List Borrowings,Self-Only,✔️,✔️,Members see own; others see all
+/borrowings/{borrowing_id}/return,PATCH,Return Book,❌,✔️,✔️,Librarian/Admin only
+/borrowings/{borrowing_id},GET,Get Borrowing,Self-Only,✔️,✔️,Members see own only
+/books/{book_id}/reviews,POST,Create Review,✔️,❌,❌,Only Members create reviews
+/books/{book_id}/reviews,GET,Get Book Reviews,✔️,✔️,✔️,All roles can view
+/books/{book_id}/rating,GET,Get Book Rating,✔️,✔️,✔️,All roles can view
+/users/{user_id}/reviews,GET,Get User Reviews,✔️,✔️,✔️,All roles can view
+/reviews/{review_id},DELETE,Delete Review,Self-Only,❌,✔️,Member deletes own; Admin can delete any
+/ai/books/recommend,GET,Recommend Books,✔️,✔️,✔️,All roles can use
+/ai/books/search_nl,POST,Search Books NL,✔️,✔️,✔️,All roles can use
+/root,GET,Root,✔️,✔️,✔️,All roles
+/health,GET,Health Check,✔️,✔️,✔️,All roles

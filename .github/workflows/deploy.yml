@@ -1,0 +1,139 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.example.com
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment"
+          # Add your deployment commands here
+          # Example: SSH to server and pull new image
+          # ssh user@staging-server "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop && docker-compose up -d"
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: https://api.example.com
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment"
+          # Add your production deployment commands here
+          # Example for AWS ECS:
+          # - name: Configure AWS credentials
+          #   uses: aws-actions/configure-aws-credentials@v2
+          #   with:
+          #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          #     aws-region: us-east-1
+          #
+          # - name: Deploy to ECS
+          #   run: |
+          #     aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+  deploy-docker-hub:
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push to Docker Hub
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/book-management-api:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/book-management-api:${{ steps.version.outputs.VERSION }}

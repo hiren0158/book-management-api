@@ -1,0 +1,47 @@
+services:
+  # Web Service - FastAPI Application
+  - type: web
+    name: book-management-api
+    runtime: python
+    region: oregon  # Change to your preferred region
+    plan: free  # Change to 'starter' or higher for production
+    branch: main  # Change to your git branch name
+    buildCommand: |
+      pip install --upgrade pip
+      pip install poetry
+      poetry config virtualenvs.create false
+      poetry install --no-dev --no-interaction --no-ansi
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13
+      - key: DATABASE_URL
+        fromDatabase:
+          name: book-management-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: GEMINI_API_KEY
+        sync: false  # Set this manually in Render dashboard
+      - key: PORT
+        value: 10000  # Render default
+    
+  # PostgreSQL Database
+  - type: pserv
+    name: book-management-db
+    region: oregon
+    plan: free  # Free tier PostgreSQL
+    databaseName: book_management
+    databaseUser: book_admin
+    ipAllowList: []  # Empty = allow all (you can restrict this)
+
+databases:
+  - name: book-management-db
+    databaseName: book_management
+    user: book_admin
+    plan: free
+    region: oregon
+    postgresMajorVersion: 15
