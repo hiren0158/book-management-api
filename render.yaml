@@ -10,7 +10,7 @@ services:
       pip install --upgrade pip
       pip install poetry
       poetry config virtualenvs.create false
-      poetry install --no-dev --no-interaction --no-ansi
+      poetry install --only main --no-interaction --no-ansi
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /
     envVars:
