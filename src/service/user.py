@@ -37,11 +37,16 @@ class UserService:
             from src.service.auth import pwd_context
             update_dict["hashed_password"] = pwd_context.hash(update_dict.pop("password"))
 
-        user = await self.user_repo.update(user_id, update_dict)
-        if not user:
-            raise ValueError("User not found")
-
-        return user
+        try:
+            user = await self.user_repo.update(user_id, update_dict)
+            if not user:
+                raise ValueError("User not found")
+            return user
+        except Exception as e:
+            # Handle duplicate email constraint violation
+            if "ix_users_email" in str(e) or "duplicate key" in str(e).lower():
+                raise ValueError("Email already exists")
+            raise
 
     async def delete_user(self, user_id: int, current_user: User) -> bool:
         if current_user.role.name != self.ROLE_ADMIN:
