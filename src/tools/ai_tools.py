@@ -269,12 +269,22 @@ CRITICAL RULES:
 2. **DO NOT HALLUCINATE GENRE VALUES:**
    ❌ NEVER invent genre names (e.g., "Health", "Business", "Fiction")
    ✅ Use the EXACT keywords from the user query
-   ✅ Search across ALL fields (title, description, genre, author) with the SAME keyword
    
-3. **SEARCH PATTERN (for each meaningful keyword):**
-   ```
-   (title ILIKE '%keyword%' OR description ILIKE '%keyword%' OR genre ILIKE '%keyword%' OR author ILIKE '%keyword%')
-   ```
+3. **SMART FIELD SELECTION - THINK ABOUT THE KEYWORD TYPE:**
+   
+   For GENRE keywords (fiction, mystery, thriller, romance, horror, fantasy, sci-fi, history, biography, etc.):
+   → Search in: title, description, genre ONLY
+   → DO NOT search in: author
+   → Pattern: (title ILIKE '%keyword%' OR description ILIKE '%keyword%' OR genre ILIKE '%keyword%')
+   
+   For TOPIC keywords (technology, python, war, space, love, adventure, detective, education, science, etc.):
+   → Search in: title, description, genre (since topics can also be genres)
+   → DO NOT search in: author
+   → Pattern: (title ILIKE '%keyword%' OR description ILIKE '%keyword%' OR genre ILIKE '%keyword%')
+   
+   For AUTHOR keywords (when query explicitly mentions author name):
+   → Search in: author ONLY
+   → Pattern: author ILIKE '%name%'
 
 4. **AND vs OR LOGIC:**
    - Multiple topics → OR (user wants ANY match)
@@ -300,25 +310,29 @@ CRITICAL RULES:
 
 EXAMPLES:
 
+Query: "some fiction books"
+Genre keyword: "fiction"
+→ title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%'
+
 Query: "technology books"
-Remove: "books" (stop word)
-Keep: "technology"
-→ title ILIKE '%technology%' OR description ILIKE '%technology%' OR genre ILIKE '%technology%' OR author ILIKE '%technology%'
+Topic keyword: "technology"
+→ title ILIKE '%technology%' OR description ILIKE '%technology%' OR genre ILIKE '%technology%'
 
 Query: "thriller by king"  
-Keep: "thriller", "king"
-→ (title ILIKE '%thriller%' OR description ILIKE '%thriller%' OR genre ILIKE '%thriller%' OR author ILIKE '%thriller%') AND (author ILIKE '%king%')
+Genre: "thriller", Author: "king"
+→ (title ILIKE '%thriller%' OR description ILIKE '%thriller%' OR genre ILIKE '%thriller%') AND (author ILIKE '%king%')
 
 Query: "python programming"
-Keep: "python", "programming"
-→ (title ILIKE '%python%' OR description ILIKE '%python%' OR genre ILIKE '%python%' OR author ILIKE '%python%') OR (title ILIKE '%programming%' OR description ILIKE '%programming%' OR genre ILIKE '%programming%' OR author ILIKE '%programming%')
+Topic keywords: "python", "programming"
+→ (title ILIKE '%python%' OR description ILIKE '%python%' OR genre ILIKE '%python%') OR (title ILIKE '%programming%' OR description ILIKE '%programming%' OR genre ILIKE '%programming%')
 
-Query: "books published in 25 after second half"
-Extract: year = 2025 (25 → 2025), second half (month > 6)
-→ EXTRACT(YEAR FROM published_date) = 2025 AND EXTRACT(MONTH FROM published_date) > 6
+Query: "mystery detective"
+Genre: "mystery", Topic: "detective"  
+→ (title ILIKE '%mystery%' OR description ILIKE '%mystery%' OR genre ILIKE '%mystery%') OR (title ILIKE '%detective%' OR description ILIKE '%detective%' OR genre ILIKE '%detective%')
 
 Query: "fiction from 2020"
-→ (title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%' OR author ILIKE '%fiction%') AND EXTRACT(YEAR FROM published_date) = 2020
+Genre: "fiction", Date filter
+→ (title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%') AND EXTRACT(YEAR FROM published_date) = 2020
 
 NOW GENERATE FOR: "{query}"
 Return ONLY the SQL WHERE clause.
