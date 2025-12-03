@@ -17,7 +17,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from src.core.database import Base
-from src.model import Role, User, Book, Borrowing, Review
+from src.model import Role, User, Book, Borrowing, Review, RagDocument
 
 target_metadata = Base
 
