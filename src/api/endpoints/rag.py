@@ -59,9 +59,23 @@ async def upload_pdf(
             chunk_page_numbers.append(page_num)
 
         logger.info(f"[RAG Upload] Generating embeddings for {len(chunks)} chunks...")
-        embedder = EmbeddingService.instance()
-        embeddings = embedder.embed_chunks(chunks)
-        logger.info(f"[RAG Upload] Generated {len(embeddings)} embeddings")
+        
+        # Add timeout to prevent hanging on free tier
+        import asyncio
+        try:
+            embedder = EmbeddingService.instance()
+            # Run embedding with 60 second timeout (free tier is slow)
+            embeddings = await asyncio.wait_for(
+                asyncio.to_thread(embedder.embed_chunks, chunks),
+                timeout=60.0
+            )
+            logger.info(f"[RAG Upload] Generated {len(embeddings)} embeddings")
+        except asyncio.TimeoutError:
+            logger.error(f"[RAG Upload] ❌ Embedding generation timed out after 60s")
+            raise HTTPException(
+                status_code=503,
+                detail="PDF processing timed out. Try a smaller PDF or fewer pages (free tier limitation)."
+            )
 
         # Create document record in database
         logger.info(f"[RAG Upload] Creating database record...")
@@ -82,6 +96,8 @@ async def upload_pdf(
 
         return UploadResponse(document_id=document.id, chunk_count=count)
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[RAG Upload] ❌ Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
