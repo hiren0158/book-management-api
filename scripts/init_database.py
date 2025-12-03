@@ -11,6 +11,12 @@ This script should be run once after initial deployment to:
 
 import os
 import sys
+
+# Add project root to Python path for imports to work
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from sqlmodel import create_engine, Session, select
 from sqlalchemy import text
 
