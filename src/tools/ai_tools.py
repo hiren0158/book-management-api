@@ -512,8 +512,18 @@ def _fuzzy_match_genre(genre: str, available_genres: list[str]) -> str:
     if exact_match:
         return exact_match
     
-    # Fuzzy matching
-    matches = get_close_matches(genre, available_genres, n=1, cutoff=0.4)
+    # Check for substring matches (e.g., "sci" in "Sci-Fi")
+    genre_lower = genre.lower()
+    for g in available_genres:
+        if genre_lower in g.lower() or g.lower() in genre_lower:
+            # Only match if significant overlap
+            overlap_len = min(len(genre_lower), len(g.lower()))
+            if overlap_len / max(len(genre_lower), len(g.lower())) >= 0.6:
+                return g
+    
+    # Fuzzy matching with STRICT cutoff (0.75 = must be 75% similar)
+    # This prevents nonsense matches like "science fiction" → "Education"
+    matches = get_close_matches(genre, available_genres, n=1, cutoff=0.75)
     if matches:
         return matches[0]
     

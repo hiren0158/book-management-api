@@ -25,46 +25,66 @@ async def upload_pdf(
     current_user: User = Depends(require_roles("Admin", "Librarian", "Member"))
 ):
     """Upload a PDF document for RAG. Accessible by Admin, Librarian, and Member."""
+    logger.info(f"[RAG Upload] Started for file: {file.filename} by user {current_user.id}")
+    
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    # extract_text_from_pdf returns cleaned text and page segments
-    text, page_segments = await extract_text_from_pdf(file)
-    chunks = chunk_text(text, max_chunk_size=1200, overlap=200)
-    if not chunks:
-        raise HTTPException(status_code=400, detail="No extractable text found in PDF")
-
-    # Determine page number for each chunk by finding which segment it came from
-    chunk_page_numbers = []
-    for chunk in chunks:
-        # Find the first page segment that contains part of this chunk
-        page_num = 1  # Default
-        chunk_start = chunk[:100].strip()  # Use first 100 chars to match
+    try:
+        # extract_text_from_pdf returns cleaned text and page segments
+        logger.info(f"[RAG Upload] Extracting text from PDF...")
+        text, page_segments = await extract_text_from_pdf(file)
+        logger.info(f"[RAG Upload] Extracted {len(text)} characters from {len(page_segments)} pages")
         
-        for segment_text, seg_page_num in page_segments:
-            if chunk_start in segment_text or segment_text[:100] in chunk:
-                page_num = seg_page_num
-                break
+        logger.info(f"[RAG Upload] Chunking text...")
+        chunks = chunk_text(text, max_chunk_size=1200, overlap=200)
+        logger.info(f"[RAG Upload] Created {len(chunks)} chunks")
         
-        chunk_page_numbers.append(page_num)
+        if not chunks:
+            raise HTTPException(status_code=400, detail="No extractable text found in PDF")
 
-    embedder = EmbeddingService.instance()
-    embeddings = embedder.embed_chunks(chunks)
+        # Determine page number for each chunk by finding which segment it came from
+        logger.info(f"[RAG Upload] Mapping chunks to pages...")
+        chunk_page_numbers = []
+        for chunk in chunks:
+            # Find the first page segment that contains part of this chunk
+            page_num = 1  # Default
+            chunk_start = chunk[:100].strip()  # Use first 100 chars to match
+            
+            for segment_text, seg_page_num in page_segments:
+                if chunk_start in segment_text or segment_text[:100] in chunk:
+                    page_num = seg_page_num
+                    break
+            
+            chunk_page_numbers.append(page_num)
 
-    # Create document record in database
-    rag_service = RagDocumentService(session)
-    document = await rag_service.create_document(
-        filename=file.filename,
-        chunk_count=len(chunks),
-        user=current_user
-    )
+        logger.info(f"[RAG Upload] Generating embeddings for {len(chunks)} chunks...")
+        embedder = EmbeddingService.instance()
+        embeddings = embedder.embed_chunks(chunks)
+        logger.info(f"[RAG Upload] Generated {len(embeddings)} embeddings")
+
+        # Create document record in database
+        logger.info(f"[RAG Upload] Creating database record...")
+        rag_service = RagDocumentService(session)
+        document = await rag_service.create_document(
+            filename=file.filename,
+            chunk_count=len(chunks),
+            user=current_user
+        )
+        logger.info(f"[RAG Upload] Created document record with ID: {document.id}")
+        
+        # Store in vector database with integer document ID
+        logger.info(f"[RAG Upload] Storing in vector database...")
+        doc_id_str = f"doc_{document.id}"
+        store = VectorStore()
+        count = store.upsert(doc_id_str, chunks, embeddings, page_numbers=chunk_page_numbers)
+        logger.info(f"[RAG Upload] ✓ Successfully stored {count} chunks in vector DB")
+
+        return UploadResponse(document_id=document.id, chunk_count=count)
     
-    # Store in vector database with integer document ID
-    doc_id_str = f"doc_{document.id}"
-    store = VectorStore()
-    count = store.upsert(doc_id_str, chunks, embeddings, page_numbers=chunk_page_numbers)
-
-    return UploadResponse(document_id=document.id, chunk_count=count)
+    except Exception as e:
+        logger.error(f"[RAG Upload] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
