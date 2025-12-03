@@ -10,8 +10,8 @@ services:
       pip install --upgrade pip
       pip install poetry
       poetry config virtualenvs.create false
-      pip install torch --index-url https://download.pytorch.org/whl/cpu
-      poetry install --only main --no-root --no-interaction --no-ansi
+      pip install torch --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+      poetry install --only main --no-root --no-interaction --no-ansi --no-cache
     startCommand: "python scripts/init_database.py && uvicorn main:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /
     envVars:
@@ -29,6 +29,8 @@ services:
         sync: false
       - key: PORT
         value: 10000
+      - key: POETRY_INSTALLER_MAX_WORKERS
+        value: 1
 
 databases:
   - name: book-management-db
