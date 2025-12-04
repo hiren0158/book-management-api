@@ -29,6 +29,48 @@ async def recommend_books_ai(
     
     genre_filter = f"Only recommend books in the '{genre}' genre." if genre else ""
     
+    # Extract genres from user's history for better matching
+    borrowed_genres = set()
+    for book in user_preferences.get('borrowed_books', []):
+        if 'genre' in book:
+            borrowed_genres.add(book['genre'])
+    
+    for book in user_preferences.get('reviewed_books', []):
+        if 'genre' in book:
+            borrowed_genres.add(book['genre'])
+    
+    # Define genre relationships for smarter recommendations
+    genre_relationships = {
+        'Thriller': ['Mystery', 'Crime', 'Suspense', 'Techno-Thriller'],
+        'Mystery': ['Thriller', 'Crime', 'Detective', 'Suspense'],
+        'Crime': ['Thriller', 'Mystery', 'Detective', 'Noir'],
+        'Romance': ['Contemporary', 'Historical Romance', 'Romantic Comedy'],
+        'Science Fiction': ['Sci-Fi', 'Techno-Thriller', 'Cyberpunk', 'Space Opera'],
+        'Fantasy': ['Epic Fantasy', 'Urban Fantasy', 'Paranormal', 'Magic'],
+        'Horror': ['Thriller', 'Suspense', 'Paranormal', 'Dark Fantasy'],
+        'Adventure': ['Action', 'Quest', 'Survival'],
+        'Historical': ['Historical Fiction', 'Historical Romance', 'Biography'],
+    }
+    
+    # Build related genres list
+    related_genres = set()
+    for genre in borrowed_genres:
+        if genre in genre_relationships:
+            related_genres.update(genre_relationships[genre])
+    
+    genre_guidance = ""
+    if borrowed_genres:
+        borrowed_list = ', '.join(borrowed_genres)
+        related_list = ', '.join(related_genres) if related_genres else "none"
+        genre_guidance = f"""
+CRITICAL GENRE MATCHING RULES:
+- User's preferred genres: {borrowed_list}
+- Related acceptable genres: {related_list}
+- PRIORITIZE books in exact genres: {borrowed_list}
+- ONLY recommend related genres if not enough exact matches
+- DO NOT recommend unrelated genres (e.g., don't recommend Adventure if user only likes Romance)
+"""
+    
     prompt = f"""You are a book recommendation assistant. Based on user's reading history, recommend books.
 
 User's reading history:
@@ -39,6 +81,13 @@ Available books:
 {json.dumps(available_books, indent=2)}
 
 {genre_filter}
+{genre_guidance}
+
+RECOMMENDATION STRATEGY:
+1. First priority: Books in the EXACT same genres user has read
+2. Second priority: Books in closely RELATED genres (see rules above)
+3. If user has high ratings (4-5 stars), prioritize similar books
+4. Avoid recommending genres unrelated to user's history
 
 Recommend {limit} books from the available books that match user preferences.
 Return ONLY a valid JSON array of book IDs (integers). No markdown, no explanations.
@@ -54,7 +103,7 @@ Example: [1, 5, 8, 12, 15]
         response = await model.generate_content_async(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.7,
+                temperature=0.3,  # Lower temperature for more focused recommendations
                 max_output_tokens=200,
             )
         )
