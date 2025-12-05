@@ -66,6 +66,11 @@ docker-compose.override.yml
 # OS
 Thumbs.db
 
-# Local Data & Models
+# Local Data & ChromaDB
 chroma_db/
+
+# ML Models
 models/
+
+# Generated HTML previews
+*.html
