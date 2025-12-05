@@ -39,7 +39,10 @@ class RetrievedChunk(BaseModel):
 class AskRequest(BaseModel):
     question: str
     top_k: int = 5
-    doc_id: Optional[int] = None  # Changed to int
+    doc_id: int = Field(
+        default=0,
+        description="Document ID to search. Use 0 to search all accessible documents, or specific ID for single document."
+    )
 
 
 class AskResponse(BaseModel):

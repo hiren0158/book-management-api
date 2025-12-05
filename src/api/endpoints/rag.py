@@ -1,18 +1,13 @@
 import logging
-import uuid
 from typing import List, Optional
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.utils.text_chunker import chunk_text
-from src.service.pdf_service import extract_text_from_pdf
-from src.service.embedding_service import EmbeddingService
-from src.service.vector_store import VectorStore
-from src.schema.rag_models import UploadResponse, AskRequest, AskResponse, RetrievedChunk
-from src.service.ai_search import get_gemini_model
+from src.schema.rag_models import UploadResponse, AskRequest, AskResponse
 from src.core.database import get_session
 from src.api.dependencies import get_current_user, require_roles
 from src.model.user import User
 from src.service.rag_document import RagDocumentService
+from src.service.rag_client import RagClient
 
 router = APIRouter(prefix="/rag", tags=["RAG"])
 logger = logging.getLogger(__name__)
@@ -31,76 +26,41 @@ async def upload_pdf(
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
     try:
-        # extract_text_from_pdf returns cleaned text and page segments
-        logger.info(f"[RAG Upload] Extracting text from PDF...")
-        text, page_segments = await extract_text_from_pdf(file)
-        logger.info(f"[RAG Upload] Extracted {len(text)} characters from {len(page_segments)} pages")
-        
-        logger.info(f"[RAG Upload] Chunking text...")
-        chunks = chunk_text(text, max_chunk_size=1200, overlap=200)
-        logger.info(f"[RAG Upload] Created {len(chunks)} chunks")
-        
-        if not chunks:
-            raise HTTPException(status_code=400, detail="No extractable text found in PDF")
-
-        # Determine page number for each chunk by finding which segment it came from
-        logger.info(f"[RAG Upload] Mapping chunks to pages...")
-        chunk_page_numbers = []
-        for chunk in chunks:
-            # Find the first page segment that contains part of this chunk
-            page_num = 1  # Default
-            chunk_start = chunk[:100].strip()  # Use first 100 chars to match
-            
-            for segment_text, seg_page_num in page_segments:
-                if chunk_start in segment_text or segment_text[:100] in chunk:
-                    page_num = seg_page_num
-                    break
-            
-            chunk_page_numbers.append(page_num)
-
-        logger.info(f"[RAG Upload] Generating embeddings for {len(chunks)} chunks...")
-        
-        # Add timeout to prevent hanging on free tier
-        import asyncio
-        try:
-            embedder = EmbeddingService.instance()
-            # Run embedding with 60 second timeout (free tier is slow)
-            embeddings = await asyncio.wait_for(
-                asyncio.to_thread(embedder.embed_chunks, chunks),
-                timeout=60.0
-            )
-            logger.info(f"[RAG Upload] Generated {len(embeddings)} embeddings")
-        except asyncio.TimeoutError:
-            logger.error(f"[RAG Upload] ❌ Embedding generation timed out after 60s")
-            raise HTTPException(
-                status_code=503,
-                detail="PDF processing timed out. Try a smaller PDF or fewer pages (free tier limitation)."
-            )
-
-        # Create document record in database
+        # Create document record in database first
         logger.info(f"[RAG Upload] Creating database record...")
         rag_service = RagDocumentService(session)
         document = await rag_service.create_document(
             filename=file.filename,
-            chunk_count=len(chunks),
+            chunk_count=0,  # Will be updated after successful upload
             user=current_user
         )
         logger.info(f"[RAG Upload] Created document record with ID: {document.id}")
         
-        # Store in vector database with integer document ID
-        logger.info(f"[RAG Upload] Storing in vector database...")
-        doc_id_str = f"doc_{document.id}"
-        store = VectorStore()
-        count = store.upsert(doc_id_str, chunks, embeddings, page_numbers=chunk_page_numbers)
-        logger.info(f"[RAG Upload] ✓ Successfully stored {count} chunks in vector DB")
-
-        return UploadResponse(document_id=document.id, chunk_count=count)
+        # Upload to RAG microservice
+        try:
+            rag_client = RagClient()
+            result = await rag_client.upload_pdf(file, document.id)
+            
+            # Update chunk count in database
+            document.chunk_count = result.chunk_count
+            await session.commit()
+            await session.refresh(document)
+            
+            logger.info(f"[RAG Upload] ✓ Successfully uploaded {result.chunk_count} chunks")
+            return result
+            
+        except Exception as e:
+            # If RAG service upload fails, delete the database record
+            logger.error(f"[RAG Upload] RAG service upload failed, rolling back database record")
+            await rag_service.delete_document(document.id, current_user)
+            raise
     
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[RAG Upload] ❌ Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
 
 
 @router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -125,10 +85,13 @@ async def delete_document(
             detail="You don't have permission to delete this document"
         )
     
-    # Delete from vector store
-    doc_id_str = f"doc_{document_id}"
-    store = VectorStore()
-    store.delete_document(doc_id_str)
+    # Delete from RAG microservice (vector store)
+    try:
+        rag_client = RagClient()
+        await rag_client.delete_document(document_id)
+    except Exception as e:
+        # Log but don't fail - continue with database deletion
+        logger.warning(f"Failed to delete from RAG service: {str(e)}")
     
     # Delete from database
     success = await rag_service.delete_document(document_id, current_user)
@@ -147,8 +110,8 @@ async def ask_question(
 ):
     """Ask a question about uploaded documents. 
     
-    - If doc_id is provided: searches only that document (if user has access)
-    - If doc_id is NOT provided: searches ALL documents owned by the user
+    - doc_id = 0 (default): Searches ALL documents you have access to
+    - doc_id = specific_id: Searches only that specific document
     """
     question = payload.question.strip()
     if not question:
@@ -157,18 +120,20 @@ async def ask_question(
     rag_service = RagDocumentService(session)
     
     # Determine which documents to search
-    if payload.doc_id:
-        # Search specific document - check access
+    doc_ids_to_search = []
+    
+    # If doc_id is specific (not 0), search that document
+    if payload.doc_id != 0:
         has_access = await rag_service.check_document_access(payload.doc_id, current_user)
         if not has_access:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have access to this document"
             )
-        doc_id_filter = f"doc_{payload.doc_id}"
+        doc_ids_to_search = [payload.doc_id]
+    
+    # If doc_id is 0, search ALL user's documents
     else:
-        # Search ALL user's documents
-        # Get all documents owned by the user
         user_documents = await rag_service.get_user_documents(current_user)
         
         if not user_documents:
@@ -177,128 +142,24 @@ async def ask_question(
                 detail="You haven't uploaded any documents yet"
             )
         
-        # Create list of doc IDs to search (for multi-document search)
-        doc_ids = [f"doc_{doc.id}" for doc in user_documents]
-        doc_id_filter = doc_ids  # Pass list instead of single string
-
-    embedder = EmbeddingService.instance()
-    q_emb = embedder.embed_query(question)
-    store = VectorStore()
-    results = store.query(q_emb, top_k=payload.top_k, doc_id=doc_id_filter)
-
-    # Build context
-    documents: List[str] = results.get("documents", [[]])[0]
-    metadatas: List[dict] = results.get("metadatas", [[]])[0]
-    distances: List[float] = results.get("distances", [[]])[0]
-
-    retrieved: List[RetrievedChunk] = []
-    for idx, (text, meta, dist) in enumerate(zip(documents, metadatas, distances)):
-        # Detect section headers in chunk (simple heuristic)
-        section = None
-        lines = text.split('\n')
-        for line in lines[:3]:  # Check first 3 lines
-            if line.strip().endswith(':') and len(line.strip()) < 100:
-                section = line.strip()
-                break
-        
-        # Convert distance to similarity score (higher = better)
-        # ChromaDB returns L2 distance where lower = more similar
-        # Convert to similarity: 1 / (1 + distance) so higher = more relevant
-        similarity_score = 1 / (1 + float(dist))
-        
-        retrieved.append(RetrievedChunk(
-            text=text,
-            score=similarity_score,  # Now higher score = more relevant
-            doc_id=str(meta.get("doc_id", "")),
-            chunk_index=int(meta.get("chunk_index", 0)),
-            page_number=meta.get("page_number"),  # Get page number from metadata
-            section=section,
-            position=idx
-        ))
-
-    # Enhanced context formatting with clear chunk boundaries
-    context_parts = []
-    for i, chunk in enumerate(retrieved, 1):
-        page_info = f" (Page {chunk.page_number})" if chunk.page_number else ""
-        section_info = f" | Section: {chunk.section}" if chunk.section else ""
-        header = f"[Source {i}{page_info}{section_info}]"
-        # Use actual newlines, not escaped strings
-        context_parts.append(f"{header}\n{chunk.text}")
+        doc_ids_to_search = [doc.id for doc in user_documents]
     
-    # Join with separator - using actual newlines, not escape sequences
-    context_text = "\n\n---\n\n".join(context_parts)
-
-    # Enhanced prompt for financial documents - request plain text answers
-    prompt_parts = [
-        "You are an expert financial analyst assistant. Answer the user's question based on the provided context from financial documents.",
-        "",
-        "INSTRUCTIONS:",
-        "- Provide accurate, detailed answers in PLAIN TEXT format",
-        "- For financial data (numbers, percentages, currency), cite the exact figures from the context",
-        "- Write answers in clear, direct sentences",
-        "- DO NOT mention source numbers (e.g., 'Source 1', 'Source 2') as they are already shown separately",
-        "- If the answer requires multiple pieces of information, synthesize them into a coherent response",
-        "- If the context doesn't contain enough information, state what's missing",
-        "- Preserve numerical accuracy - do not round or approximate financial figures",
-        "- Write in plain text without any special formatting",
-        "",
-        "CONTEXT:",
-        context_text,
-        "",
-        f"QUESTION: {question}",
-        "",
-        "ANSWER (write directly without mentioning sources):"
-    ]
     
-    # Join with actual newlines, not escaped sequences
-    prompt = "\n".join(prompt_parts)
-
+    # Call RAG microservice
     try:
-        gemini_model = get_gemini_model()
-        response = gemini_model.generate_content(prompt)
-        answer = getattr(response, "text", None) or (response.candidates[0].content.parts[0].text if response.candidates else "")
-        if not answer:
-            answer = "No answer generated."
+        rag_client = RagClient()
         
-        # Strip any remaining markdown formatting that Gemini might have added
-        import re
+        # Always send as doc_ids list to microservice
+        result = await rag_client.ask_question(
+            question=question,
+            top_k=payload.top_k,
+            doc_ids=doc_ids_to_search
+        )
         
-        # Remove markdown headers
-        answer = re.sub(r'^#{1,6}\s+', '', answer, flags=re.MULTILINE)
-        
-        # Remove bold/italic markers (but preserve the content)
-        answer = re.sub(r'\*\*([^*]+)\*\*', r'\1', answer)  # Bold
-        answer = re.sub(r'__([^_]+)__', r'\1', answer)      # Bold alternative
-        answer = re.sub(r'\*([^*\n]+)\*', r'\1', answer)    # Italic (avoid matching list bullets)
-        answer = re.sub(r'_([^_\n]+)_', r'\1', answer)      # Italic alternative
-        
-        # Remove code blocks and inline code
-        answer = re.sub(r'```[^`]*```', '', answer, flags=re.DOTALL)
-        answer = re.sub(r'`([^`]+)`', r'\1', answer)
-        
-        # Convert bullet points to clean format
-        # Handle various bullet formats: *, -, •, numbered lists
-        answer = re.sub(r'^\s*[\*\-•]\s+', '- ', answer, flags=re.MULTILINE)
-        answer = re.sub(r'^\s*\d+\.\s+', lambda m: f"{m.group(0).strip()} ", answer, flags=re.MULTILINE)
-        
-        # Clean up excessive newlines - convert multiple newlines to double newline for paragraphs
-        answer = re.sub(r'\n{3,}', '\n\n', answer)
-        
-        # Remove leading/trailing whitespace from each line
-        lines = [line.rstrip() for line in answer.split('\n')]
-        answer = '\n'.join(lines)
-        
-        # Convert to single paragraph format for clean display in Swagger
-        # Replace all newlines with spaces to create one continuous text
-        answer = answer.replace('\n', ' ')
-        # Clean up multiple spaces
-        answer = re.sub(r'\s{2,}', ' ', answer)
-        
-        # Final cleanup
-        answer = answer.strip()
-        
+        return result
+    
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Gemini API error: %s", e)
-        raise HTTPException(status_code=500, detail="Failed to generate answer from Gemini")
-
-    return AskResponse(answer=answer.strip(), context=retrieved)
+        logger.error(f"[RAG Ask] ❌ Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to answer question: {str(e)}")
