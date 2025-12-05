@@ -15,9 +15,7 @@ class ReviewService:
         self.borrowing_repo = BorrowingRepository(session)
 
     async def create_review(
-        self,
-        review_data: ReviewCreate,
-        current_user: User
+        self, review_data: ReviewCreate, current_user: User
     ) -> Review:
         if review_data.user_id != current_user.id:
             raise ValueError("Cannot create review for other users")
@@ -28,21 +26,18 @@ class ReviewService:
 
         # Check if user has borrowed this book
         user_borrowings, _ = await self.borrowing_repo.get_user_borrowings(
-            user_id=current_user.id,
-            limit=100  # Get enough to check all borrowings
+            user_id=current_user.id, limit=100  # Get enough to check all borrowings
         )
-        
+
         has_borrowed = any(
-            borrowing.book_id == review_data.book_id 
-            for borrowing in user_borrowings
+            borrowing.book_id == review_data.book_id for borrowing in user_borrowings
         )
-        
+
         if not has_borrowed:
             raise ValueError("You can only review books you have borrowed")
 
         existing_review = await self.review_repo.get_user_review_for_book(
-            user_id=review_data.user_id,
-            book_id=review_data.book_id
+            user_id=review_data.user_id, book_id=review_data.book_id
         )
         if existing_review:
             raise ValueError("You have already reviewed this book")
@@ -54,27 +49,17 @@ class ReviewService:
         return await self.review_repo.get_by_id(review_id)
 
     async def get_book_reviews(
-        self,
-        book_id: int,
-        limit: int = 10,
-        cursor: Optional[str] = None
+        self, book_id: int, limit: int = 10, cursor: Optional[str] = None
     ):
         return await self.review_repo.get_book_reviews(
-            book_id=book_id,
-            limit=limit,
-            cursor=cursor
+            book_id=book_id, limit=limit, cursor=cursor
         )
 
     async def get_user_reviews(
-        self,
-        user_id: int,
-        limit: int = 10,
-        cursor: Optional[str] = None
+        self, user_id: int, limit: int = 10, cursor: Optional[str] = None
     ):
         return await self.review_repo.get_user_reviews(
-            user_id=user_id,
-            limit=limit,
-            cursor=cursor
+            user_id=user_id, limit=limit, cursor=cursor
         )
 
     async def get_book_average_rating(self, book_id: int) -> Optional[float]:
@@ -85,7 +70,7 @@ class ReviewService:
         review_id: int,
         rating: Optional[int] = None,
         text: Optional[str] = None,
-        current_user: User = None
+        current_user: User = None,
     ) -> Review:
         review = await self.review_repo.get_by_id(review_id)
         if not review:

@@ -18,4 +18,3 @@ class RoleRepository(BaseRepository[Role]):
         statement = select(Role).where(Role.name == name)
         result = await self.session.execute(statement)
         return result.scalar_one_or_none()
-

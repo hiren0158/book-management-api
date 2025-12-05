@@ -23,19 +23,14 @@ class Book(SQLModel, table=True):
     genre: str
     published_date: date
     created_at: datetime = Field(default_factory=utcnow_naive)
-    
+
     if os.getenv("TESTING"):
         search_vector: Optional[str] = Field(
-            default=None,
-            sa_column=Column(String, nullable=True)
+            default=None, sa_column=Column(String, nullable=True)
         )
     else:
         search_vector: Optional[str] = Field(
-            default=None,
-            sa_column=Column(
-                TSVECTOR,
-                nullable=True
-            )
+            default=None, sa_column=Column(TSVECTOR, nullable=True)
         )
 
     if not os.getenv("TESTING"):
@@ -45,13 +40,13 @@ class Book(SQLModel, table=True):
                 "ix_books_title_trgm",
                 "title",
                 postgresql_using="gin",
-                postgresql_ops={"title": "gin_trgm_ops"}
+                postgresql_ops={"title": "gin_trgm_ops"},
             ),
             Index(
                 "ix_books_author_trgm",
                 "author",
                 postgresql_using="gin",
-                postgresql_ops={"author": "gin_trgm_ops"}
+                postgresql_ops={"author": "gin_trgm_ops"},
             ),
         )
     else:
@@ -73,6 +68,7 @@ def _compose_search_text(book: "Book") -> str:
 
 
 if os.getenv("TESTING"):
+
     @event.listens_for(Book, "before_insert")
     def _set_search_vector_before_insert(mapper, connection, target):  # type: ignore[unused-arg]
         target.search_vector = _compose_search_text(target)

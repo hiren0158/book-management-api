@@ -13,16 +13,15 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(
-    user_data: UserCreate,
-    session: AsyncSession = Depends(get_session)
-):
+async def register(user_data: UserCreate, session: AsyncSession = Depends(get_session)):
     auth_service = AuthService(session)
-    
+
     try:
         user = await auth_service.register(user_data)
         return {"message": "User registered successfully", "user": user}
@@ -32,17 +31,14 @@ async def register(
         print(f"Internal error during registration: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An internal error occurred during registration"
+            detail="An internal error occurred during registration",
         )
 
 
 @router.post("/login", response_model=Token)
-async def login(
-    login_data: LoginRequest,
-    session: AsyncSession = Depends(get_session)
-):
+async def login(login_data: LoginRequest, session: AsyncSession = Depends(get_session)):
     auth_service = AuthService(session)
-    
+
     try:
         token = await auth_service.login(login_data.email, login_data.password)
         return token
@@ -52,11 +48,10 @@ async def login(
 
 @router.post("/refresh", response_model=Token)
 async def refresh_token(
-    refresh_data: RefreshRequest,
-    session: AsyncSession = Depends(get_session)
+    refresh_data: RefreshRequest, session: AsyncSession = Depends(get_session)
 ):
     auth_service = AuthService(session)
-    
+
     try:
         token = await auth_service.refresh_token(refresh_data.refresh_token)
         return token

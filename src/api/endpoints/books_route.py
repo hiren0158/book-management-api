@@ -11,16 +11,25 @@ router = APIRouter(prefix="/books", tags=["Books"])
 
 from src.schema.common import CursorPage
 
+
 @router.get("", response_model=CursorPage[BookRead])
 async def list_books(
-    search: Optional[str] = Query(None, description="Search books by title, author, genre, description, or ISBN"),
+    search: Optional[str] = Query(
+        None, description="Search books by title, author, genre, description, or ISBN"
+    ),
     author: Optional[str] = Query(None, description="Filter by author name"),
     genre: Optional[str] = Query(None, description="Filter by genre"),
-    published_year: Optional[int] = Query(None, description="Filter by publication year"),
+    published_year: Optional[int] = Query(
+        None, description="Filter by publication year"
+    ),
     limit: int = Query(10, ge=1, le=100, description="Number of results per page"),
     cursor: Optional[str] = Query(None, description="Pagination cursor"),
-    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Sort order: asc (oldest first) or desc (newest first)"),
-    session: AsyncSession = Depends(get_session)
+    sort_order: str = Query(
+        "desc",
+        pattern="^(asc|desc)$",
+        description="Sort order: asc (oldest first) or desc (newest first)",
+    ),
+    session: AsyncSession = Depends(get_session),
 ):
     book_service = BookService(session)
 
@@ -33,35 +42,32 @@ async def list_books(
                 published_year=published_year,
                 limit=limit,
                 cursor=cursor,
-                sort_order=sort_order
+                sort_order=sort_order,
             )
         else:
             books, next_cursor = await book_service.list_books(
-                limit=limit, 
-                cursor=cursor,
-                sort_order=sort_order
+                limit=limit, cursor=cursor, sort_order=sort_order
             )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    
+
     return {
         "data": books,
         "next_cursor": next_cursor,
-        "has_next_page": next_cursor is not None
+        "has_next_page": next_cursor is not None,
     }
 
 
 @router.get("/{book_id}", response_model=BookRead)
-async def get_book(
-    book_id: int,
-    session: AsyncSession = Depends(get_session)
-):
+async def get_book(book_id: int, session: AsyncSession = Depends(get_session)):
     book_service = BookService(session)
     book = await book_service.get_book(book_id)
-    
+
     if not book:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
-    
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Book not found"
+        )
+
     return book
 
 
@@ -69,10 +75,10 @@ async def get_book(
 async def create_book(
     book_data: BookCreate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(require_roles("Admin", "Librarian"))
+    current_user: User = Depends(require_roles("Admin", "Librarian")),
 ):
     book_service = BookService(session)
-    
+
     try:
         book = await book_service.create_book(book_data, current_user)
         return book
@@ -85,10 +91,10 @@ async def update_book(
     book_id: int,
     book_data: BookUpdate,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(require_roles("Admin", "Librarian"))
+    current_user: User = Depends(require_roles("Admin", "Librarian")),
 ):
     book_service = BookService(session)
-    
+
     try:
         book = await book_service.update_book(book_id, book_data, current_user)
         return book
@@ -100,11 +106,13 @@ async def update_book(
 async def delete_book(
     book_id: int,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(require_roles("Admin"))
+    current_user: User = Depends(require_roles("Admin")),
 ):
     book_service = BookService(session)
-    
+
     success = await book_service.delete_book(book_id, current_user)
-    
+
     if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Book not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Book not found"
+        )

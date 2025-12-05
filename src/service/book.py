@@ -30,8 +30,12 @@ class BookService:
     async def get_book_by_isbn(self, isbn: str) -> Optional[Book]:
         return await self.book_repo.get_by_isbn(isbn)
 
-    async def list_books(self, limit: int = 10, cursor: Optional[str] = None, sort_order: str = "desc"):
-        return await self.book_repo.list(limit=limit, cursor=cursor, sort_order=sort_order)
+    async def list_books(
+        self, limit: int = 10, cursor: Optional[str] = None, sort_order: str = "desc"
+    ):
+        return await self.book_repo.list(
+            limit=limit, cursor=cursor, sort_order=sort_order
+        )
 
     # Traditional search for GET /books endpoint
     async def search_books_fts(
@@ -42,7 +46,7 @@ class BookService:
         published_year: Optional[int] = None,
         limit: int = 10,
         cursor: Optional[str] = None,
-        sort_order: str = "desc"
+        sort_order: str = "desc",
     ):
         """FTS + Trigram search for traditional /books endpoint."""
         return await self.book_repo.search_books_fts(
@@ -52,9 +56,9 @@ class BookService:
             published_year=published_year,
             limit=limit,
             cursor=cursor,
-            sort_order=sort_order
+            sort_order=sort_order,
         )
-    
+
     # AI-driven search for POST /ai/books/search_nl endpoint
     async def search_books_ilike(
         self,
@@ -64,7 +68,7 @@ class BookService:
         published_year: Optional[int] = None,
         limit: int = 10,
         cursor: Optional[str] = None,
-        sort_order: str = "desc"
+        sort_order: str = "desc",
     ):
         """ILIKE-only search for AI natural language endpoint."""
         return await self.book_repo.search_books_ilike(
@@ -74,20 +78,17 @@ class BookService:
             published_year=published_year,
             limit=limit,
             cursor=cursor,
-            sort_order=sort_order
+            sort_order=sort_order,
         )
 
     async def update_book(
-        self,
-        book_id: int,
-        book_data: BookUpdate,
-        current_user: User
+        self, book_id: int, book_data: BookUpdate, current_user: User
     ) -> Book:
         if current_user.role.name not in [self.ROLE_ADMIN, self.ROLE_LIBRARIAN]:
             raise ValueError("Only Admin or Librarian can update books")
 
         update_dict = book_data.model_dump(exclude_unset=True)
-        
+
         if "isbn" in update_dict:
             existing_book = await self.book_repo.get_by_isbn(update_dict["isbn"])
             if existing_book and existing_book.id != book_id:

@@ -38,7 +38,7 @@ class BaseRepository(Generic[T]):
     ) -> tuple[list[T], Optional[str]]:
         """
         List items with pagination, filtering, and search.
-        
+
         Args:
             limit: Maximum number of items to return
             cursor: Cursor for pagination
@@ -54,15 +54,15 @@ class BaseRepository(Generic[T]):
             cursor_data = self._decode_cursor(cursor)
             created_at = datetime.fromisoformat(cursor_data["created_at"])
             cursor_id = cursor_data["id"]
-            
+
             if sort_order == "asc":
                 statement = statement.where(
                     or_(
                         self.model.created_at > created_at,
                         and_(
                             self.model.created_at == created_at,
-                            self.model.id > cursor_id
-                        )
+                            self.model.id > cursor_id,
+                        ),
                     )
                 )
             else:  # desc
@@ -71,8 +71,8 @@ class BaseRepository(Generic[T]):
                         self.model.created_at < created_at,
                         and_(
                             self.model.created_at == created_at,
-                            self.model.id < cursor_id
-                        )
+                            self.model.id < cursor_id,
+                        ),
                     )
                 )
 
@@ -90,87 +90,88 @@ class BaseRepository(Generic[T]):
         # Apply text search across multiple fields with smart word matching
         if search_query and search_fields:
             import re
+
             keywords = search_query.split()
             search_conditions = []
-            
+
             # Common abbreviations mapping
             abbreviations = {
-                'db': 'database',
-                'ai': 'artificial intelligence',
-                'ml': 'machine learning',
-                'dl': 'deep learning',
-                'nlp': 'natural language processing',
-                'api': 'application programming interface',
-                'sql': 'structured query language',
-                'ui': 'user interface',
-                'ux': 'user experience',
-                'js': 'javascript',
-                'py': 'python',
-                'cs': 'computer science',
-                'it': 'information technology',
-                'iot': 'internet of things',
-                'ci': 'continuous integration',
-                'cd': 'continuous deployment',
+                "db": "database",
+                "ai": "artificial intelligence",
+                "ml": "machine learning",
+                "dl": "deep learning",
+                "nlp": "natural language processing",
+                "api": "application programming interface",
+                "sql": "structured query language",
+                "ui": "user interface",
+                "ux": "user experience",
+                "js": "javascript",
+                "py": "python",
+                "cs": "computer science",
+                "it": "information technology",
+                "iot": "internet of things",
+                "ci": "continuous integration",
+                "cd": "continuous deployment",
             }
-            
+
             # Synonym expansion for better semantic matching
             synonyms = {
-                'underwater': ['deep-sea', 'ocean', 'submarine', 'aquatic'],
-                'deep-sea': ['underwater', 'ocean', 'submarine'],
-                'ocean': ['underwater', 'deep-sea', 'sea', 'marine'],
-                'space': ['galaxy', 'cosmic', 'universe', 'stellar'],
-                'galaxy': ['space', 'cosmic', 'universe', 'stellar'],
-                'ancient': ['old', 'historical', 'antiquity'],
-                'old': ['ancient', 'historical', 'vintage'],
-                'future': ['futuristic', 'tomorrow', 'advanced'],
-                'futuristic': ['future', 'tomorrow', 'advanced'],
-                'scary': ['horror', 'frightening', 'terrifying'],
-                'horror': ['scary', 'frightening', 'terrifying'],
+                "underwater": ["deep-sea", "ocean", "submarine", "aquatic"],
+                "deep-sea": ["underwater", "ocean", "submarine"],
+                "ocean": ["underwater", "deep-sea", "sea", "marine"],
+                "space": ["galaxy", "cosmic", "universe", "stellar"],
+                "galaxy": ["space", "cosmic", "universe", "stellar"],
+                "ancient": ["old", "historical", "antiquity"],
+                "old": ["ancient", "historical", "vintage"],
+                "future": ["futuristic", "tomorrow", "advanced"],
+                "futuristic": ["future", "tomorrow", "advanced"],
+                "scary": ["horror", "frightening", "terrifying"],
+                "horror": ["scary", "frightening", "terrifying"],
             }
-            
+
             for keyword in keywords:
                 keyword_conditions = []
                 keyword_lower = keyword.lower()
-                
+
                 # Generate variations of the keyword to match
                 variations = [keyword_lower]
-                
+
                 # Check if keyword has synonyms
                 if keyword_lower in synonyms:
                     variations.extend(synonyms[keyword_lower])
-                
+
                 # Check if keyword is a known abbreviation
                 if keyword_lower in abbreviations:
                     full_form = abbreviations[keyword_lower]
                     # Add the full form and its variations
                     variations.append(full_form)
                     # Also add plural
-                    if not full_form.endswith('s'):
-                        variations.append(full_form + 's')
-                
+                    if not full_form.endswith("s"):
+                        variations.append(full_form + "s")
+
                 # Add plural form if doesn't end with 's'
-                if not keyword_lower.endswith('s'):
-                    variations.append(keyword_lower + 's')
-                
+                if not keyword_lower.endswith("s"):
+                    variations.append(keyword_lower + "s")
+
                 # Remove 's' if ends with 's' (handle plurals)
-                if keyword_lower.endswith('s') and len(keyword_lower) > 3:
+                if keyword_lower.endswith("s") and len(keyword_lower) > 3:
                     variations.append(keyword_lower[:-1])
-                
+
                 # Handle -ing forms (coding -> code)
-                if keyword_lower.endswith('ing') and len(keyword_lower) > 4:
+                if keyword_lower.endswith("ing") and len(keyword_lower) > 4:
                     base = keyword_lower[:-3]
                     variations.append(base)  # coding -> cod
-                    variations.append(base + 'e')  # coding -> code
-                
+                    variations.append(base + "e")  # coding -> code
+
                 # Handle -ed forms (coded -> code)
-                if keyword_lower.endswith('ed') and len(keyword_lower) > 3:
+                if keyword_lower.endswith("ed") and len(keyword_lower) > 3:
                     base = keyword_lower[:-2]
                     variations.append(base)  # coded -> cod
-                    variations.append(base + 'e')  # coded -> code
-                
+                    variations.append(base + "e")  # coded -> code
+
                 # Remove duplicates
                 variations = list(set(variations))
-                
+
                 # Search for any variation in any field
                 for variation in variations:
                     for field in search_fields:
@@ -178,26 +179,24 @@ class BaseRepository(Generic[T]):
                             keyword_conditions.append(
                                 getattr(self.model, field).ilike(f"%{variation}%")
                             )
-                
+
                 if keyword_conditions:
                     # Any variation of this keyword must match (OR)
                     search_conditions.append(or_(*keyword_conditions))
-            
+
             if search_conditions:
                 # All keywords must match (AND logic)
                 statement = statement.where(and_(*search_conditions))
 
         if sort_order == "asc":
             statement = statement.order_by(
-                self.model.created_at.asc(),
-                self.model.id.asc()
+                self.model.created_at.asc(), self.model.id.asc()
             )
         else:
             statement = statement.order_by(
-                self.model.created_at.desc(),
-                self.model.id.desc()
+                self.model.created_at.desc(), self.model.id.desc()
             )
-            
+
         statement = statement.limit(limit + 1)
 
         result = await self.session.execute(statement)
@@ -245,10 +244,7 @@ class BaseRepository(Generic[T]):
         return result.scalar_one()
 
     def _encode_cursor(self, created_at: datetime, id: int) -> str:
-        cursor_data = {
-            "created_at": created_at.isoformat(),
-            "id": id
-        }
+        cursor_data = {"created_at": created_at.isoformat(), "id": id}
         json_str = json.dumps(cursor_data)
         return base64.b64encode(json_str.encode()).decode()
 

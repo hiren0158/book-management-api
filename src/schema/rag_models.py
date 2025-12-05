@@ -17,7 +17,7 @@ class RagDocumentRead(RagDocumentBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -31,7 +31,9 @@ class RetrievedChunk(BaseModel):
     score: float
     doc_id: str
     chunk_index: int
-    page_number: Optional[int] = Field(None, description="Page number in source document")
+    page_number: Optional[int] = Field(
+        None, description="Page number in source document"
+    )
     section: Optional[str] = Field(None, description="Document section if detected")
     position: Optional[int] = Field(None, description="Absolute position in document")
 
@@ -41,7 +43,7 @@ class AskRequest(BaseModel):
     top_k: int = 5
     doc_id: int = Field(
         default=0,
-        description="Document ID to search. Use 0 to search all accessible documents, or specific ID for single document."
+        description="Document ID to search. Use 0 to search all accessible documents, or specific ID for single document.",
     )
 
 

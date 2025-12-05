@@ -23,19 +23,19 @@ class UserService:
         return await self.user_repo.list(limit=limit, cursor=cursor)
 
     async def update_user(
-        self,
-        user_id: int,
-        user_data: UserUpdate,
-        current_user: User
+        self, user_id: int, user_data: UserUpdate, current_user: User
     ) -> User:
         if user_id != current_user.id and current_user.role.name != self.ROLE_ADMIN:
             raise ValueError("Permission denied")
 
         update_dict = user_data.model_dump(exclude_unset=True)
-        
+
         if "password" in update_dict:
             from src.service.auth import pwd_context
-            update_dict["hashed_password"] = pwd_context.hash(update_dict.pop("password"))
+
+            update_dict["hashed_password"] = pwd_context.hash(
+                update_dict.pop("password")
+            )
 
         try:
             user = await self.user_repo.update(user_id, update_dict)
@@ -68,10 +68,10 @@ class UserService:
         role_hierarchy = {
             self.ROLE_ADMIN: 3,
             self.ROLE_LIBRARIAN: 2,
-            self.ROLE_MEMBER: 1
+            self.ROLE_MEMBER: 1,
         }
-        
+
         user_level = role_hierarchy.get(user.role.name, 0)
         required_level = role_hierarchy.get(required_role, 0)
-        
+
         return user_level >= required_level

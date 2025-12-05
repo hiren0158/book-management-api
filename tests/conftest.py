@@ -22,7 +22,9 @@ from main import app
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
-async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+async_session_maker = async_sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 @pytest_asyncio.fixture
@@ -44,7 +46,9 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_session] = override_get_session
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
         yield ac
 
     app.dependency_overrides.clear()
@@ -80,13 +84,13 @@ async def librarian_role(db_session: AsyncSession) -> Role:
 @pytest_asyncio.fixture
 async def test_user(db_session: AsyncSession, test_role: Role) -> User:
     from src.service.auth import pwd_context
-    
+
     user = User(
         email="test@example.com",
         name="Test User",
         hashed_password=pwd_context.hash("testpass123"),
         role_id=test_role.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -97,13 +101,13 @@ async def test_user(db_session: AsyncSession, test_role: Role) -> User:
 @pytest_asyncio.fixture
 async def admin_user(db_session: AsyncSession, admin_role: Role) -> User:
     from src.service.auth import pwd_context
-    
+
     user = User(
         email="admin@example.com",
         name="Admin User",
         hashed_password=pwd_context.hash("adminpass123"),
         role_id=admin_role.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -114,14 +118,14 @@ async def admin_user(db_session: AsyncSession, admin_role: Role) -> User:
 @pytest_asyncio.fixture
 async def test_book(db_session: AsyncSession) -> Book:
     from datetime import date
-    
+
     book = Book(
         title="Test Book",
         description="A test book description",
         isbn="978-0-123456-78-9",
         author="Test Author",
         genre="Fiction",
-        published_date=date(2020, 1, 1)
+        published_date=date(2020, 1, 1),
     )
     db_session.add(book)
     await db_session.commit()
@@ -132,8 +136,7 @@ async def test_book(db_session: AsyncSession) -> Book:
 @pytest_asyncio.fixture
 async def auth_headers(client: AsyncClient, test_user: User) -> dict:
     response = await client.post(
-        "/auth/login",
-        json={"email": "test@example.com", "password": "testpass123"}
+        "/auth/login", json={"email": "test@example.com", "password": "testpass123"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -142,8 +145,7 @@ async def auth_headers(client: AsyncClient, test_user: User) -> dict:
 @pytest_asyncio.fixture
 async def admin_auth_headers(client: AsyncClient, admin_user: User) -> dict:
     response = await client.post(
-        "/auth/login",
-        json={"email": "admin@example.com", "password": "adminpass123"}
+        "/auth/login", json={"email": "admin@example.com", "password": "adminpass123"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -152,13 +154,13 @@ async def admin_auth_headers(client: AsyncClient, admin_user: User) -> dict:
 @pytest_asyncio.fixture
 async def librarian_user(db_session: AsyncSession, librarian_role: Role) -> User:
     from src.service.auth import pwd_context
-    
+
     user = User(
         email="librarian@example.com",
         name="Librarian User",
         hashed_password=pwd_context.hash("libpass123"),
         role_id=librarian_role.id,
-        is_active=True
+        is_active=True,
     )
     db_session.add(user)
     await db_session.commit()
@@ -169,8 +171,7 @@ async def librarian_user(db_session: AsyncSession, librarian_role: Role) -> User
 @pytest_asyncio.fixture
 async def librarian_auth_headers(client: AsyncClient, librarian_user: User) -> dict:
     response = await client.post(
-        "/auth/login",
-        json={"email": "librarian@example.com", "password": "libpass123"}
+        "/auth/login", json={"email": "librarian@example.com", "password": "libpass123"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

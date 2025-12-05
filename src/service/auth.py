@@ -34,10 +34,12 @@ class AuthService:
         # Validate role_id exists
         role = await self.role_repo.get_by_id(user_data.role_id)
         if not role:
-            raise ValueError(f"Invalid role_id. Please select a valid role ID (1=Member, 2=Admin, 3=Librarian)")
+            raise ValueError(
+                f"Invalid role_id. Please select a valid role ID (1=Member, 2=Admin, 3=Librarian)"
+            )
 
         hashed_password = self._hash_password(user_data.password)
-        
+
         user_dict = user_data.model_dump()
         user_dict["hashed_password"] = hashed_password
         del user_dict["password"]
@@ -49,7 +51,9 @@ class AuthService:
             # Catch foreign key constraint errors and other database errors
             error_msg = str(e)
             if "foreign key" in error_msg.lower() or "role_id" in error_msg.lower():
-                raise ValueError(f"Invalid role_id. Please select a valid role ID (1=Member, 2=Admin, 3=Librarian)")
+                raise ValueError(
+                    f"Invalid role_id. Please select a valid role ID (1=Member, 2=Admin, 3=Librarian)"
+                )
             raise ValueError(f"Failed to create user: {error_msg}")
 
     async def login(self, email: str, password: str) -> Token:
@@ -60,14 +64,20 @@ class AuthService:
         if not user.is_active:
             raise ValueError("Account is inactive")
 
-        access_token = self._create_access_token({"user_id": user.id, "email": user.email})
-        refresh_token = self._create_refresh_token({"user_id": user.id, "email": user.email})
+        access_token = self._create_access_token(
+            {"user_id": user.id, "email": user.email}
+        )
+        refresh_token = self._create_refresh_token(
+            {"user_id": user.id, "email": user.email}
+        )
 
         return Token(access_token=access_token, refresh_token=refresh_token)
 
     async def refresh_token(self, refresh_token: str) -> Token:
         try:
-            payload = jwt.decode(refresh_token, JWT_REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(
+                refresh_token, JWT_REFRESH_SECRET_KEY, algorithms=[ALGORITHM]
+            )
             user_id = payload.get("user_id")
             email = payload.get("email")
 
@@ -78,8 +88,12 @@ class AuthService:
             if not user or not user.is_active:
                 raise ValueError("Invalid token")
 
-            access_token = self._create_access_token({"user_id": user.id, "email": user.email})
-            new_refresh_token = self._create_refresh_token({"user_id": user.id, "email": user.email})
+            access_token = self._create_access_token(
+                {"user_id": user.id, "email": user.email}
+            )
+            new_refresh_token = self._create_refresh_token(
+                {"user_id": user.id, "email": user.email}
+            )
 
             return Token(access_token=access_token, refresh_token=new_refresh_token)
 
@@ -102,8 +116,8 @@ class AuthService:
 
     def _hash_password(self, password: str) -> str:
         # Bcrypt has a 72-byte limit, truncate if needed
-        if len(password.encode('utf-8')) > 72:
-            password = password.encode('utf-8')[:72].decode('utf-8', errors='ignore')
+        if len(password.encode("utf-8")) > 72:
+            password = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
         return pwd_context.hash(password)
 
     def _verify_password(self, plain_password: str, hashed_password: str) -> bool:
@@ -111,7 +125,9 @@ class AuthService:
 
     def _create_access_token(self, data: dict) -> str:
         to_encode = data.copy()
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
         to_encode.update({"exp": expire, "type": "access"})
         return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=ALGORITHM)
 

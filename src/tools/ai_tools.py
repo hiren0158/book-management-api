@@ -6,62 +6,64 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def get_model():
     """Get Gemini model instance (creates new instance per call to avoid event loop issues)."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return None
-    
+
     # Configure API key (idempotent)
     genai.configure(api_key=api_key)
-    
-    return genai.GenerativeModel('gemini-2.0-flash')
+
+    return genai.GenerativeModel("gemini-2.0-flash")
+
 
 async def recommend_books_ai(
     user_preferences: dict,
     available_books: list[dict],
     genre: Optional[str] = None,
-    limit: int = 5
+    limit: int = 5,
 ) -> list[int]:
     """Use Gemini AI to recommend books based on user preferences."""
     if not available_books:
         return []
-    
+
     genre_filter = f"Only recommend books in the '{genre}' genre." if genre else ""
-    
+
     # Extract genres from user's history for better matching
     borrowed_genres = set()
-    for book in user_preferences.get('borrowed_books', []):
-        if 'genre' in book:
-            borrowed_genres.add(book['genre'])
-    
-    for book in user_preferences.get('reviewed_books', []):
-        if 'genre' in book:
-            borrowed_genres.add(book['genre'])
-    
+    for book in user_preferences.get("borrowed_books", []):
+        if "genre" in book:
+            borrowed_genres.add(book["genre"])
+
+    for book in user_preferences.get("reviewed_books", []):
+        if "genre" in book:
+            borrowed_genres.add(book["genre"])
+
     # Define genre relationships for smarter recommendations
     genre_relationships = {
-        'Thriller': ['Mystery', 'Crime', 'Suspense', 'Techno-Thriller'],
-        'Mystery': ['Thriller', 'Crime', 'Detective', 'Suspense'],
-        'Crime': ['Thriller', 'Mystery', 'Detective', 'Noir'],
-        'Romance': ['Contemporary', 'Historical Romance', 'Romantic Comedy'],
-        'Science Fiction': ['Sci-Fi', 'Techno-Thriller', 'Cyberpunk', 'Space Opera'],
-        'Fantasy': ['Epic Fantasy', 'Urban Fantasy', 'Paranormal', 'Magic'],
-        'Horror': ['Thriller', 'Suspense', 'Paranormal', 'Dark Fantasy'],
-        'Adventure': ['Action', 'Quest', 'Survival'],
-        'Historical': ['Historical Fiction', 'Historical Romance', 'Biography'],
+        "Thriller": ["Mystery", "Crime", "Suspense", "Techno-Thriller"],
+        "Mystery": ["Thriller", "Crime", "Detective", "Suspense"],
+        "Crime": ["Thriller", "Mystery", "Detective", "Noir"],
+        "Romance": ["Contemporary", "Historical Romance", "Romantic Comedy"],
+        "Science Fiction": ["Sci-Fi", "Techno-Thriller", "Cyberpunk", "Space Opera"],
+        "Fantasy": ["Epic Fantasy", "Urban Fantasy", "Paranormal", "Magic"],
+        "Horror": ["Thriller", "Suspense", "Paranormal", "Dark Fantasy"],
+        "Adventure": ["Action", "Quest", "Survival"],
+        "Historical": ["Historical Fiction", "Historical Romance", "Biography"],
     }
-    
+
     # Build related genres list
     related_genres = set()
     for genre in borrowed_genres:
         if genre in genre_relationships:
             related_genres.update(genre_relationships[genre])
-    
+
     genre_guidance = ""
     if borrowed_genres:
-        borrowed_list = ', '.join(borrowed_genres)
-        related_list = ', '.join(related_genres) if related_genres else "none"
+        borrowed_list = ", ".join(borrowed_genres)
+        related_list = ", ".join(related_genres) if related_genres else "none"
         genre_guidance = f"""
 CRITICAL GENRE MATCHING RULES:
 - User's preferred genres: {borrowed_list}
@@ -70,7 +72,7 @@ CRITICAL GENRE MATCHING RULES:
 - ONLY recommend related genres if not enough exact matches
 - DO NOT recommend unrelated genres (e.g., don't recommend Adventure if user only likes Romance)
 """
-    
+
     prompt = f"""You are a book recommendation assistant. Based on user's reading history, recommend books.
 
 User's reading history:
@@ -99,17 +101,17 @@ Example: [1, 5, 8, 12, 15]
         if not model:
             print("GEMINI_API_KEY not set. Skipping AI recommendation.")
             return []
-        
+
         response = await model.generate_content_async(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.3,  # Lower temperature for more focused recommendations
                 max_output_tokens=200,
-            )
+            ),
         )
 
         content = response.text.strip()
-        
+
         # Remove markdown formatting if present
         if content.startswith("```json"):
             content = content[7:]
@@ -117,17 +119,18 @@ Example: [1, 5, 8, 12, 15]
             content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
-        
+
         recommended_ids = json.loads(content.strip())
-        
+
         if not isinstance(recommended_ids, list):
             return []
-        
+
         valid_ids = [
-            int(book_id) for book_id in recommended_ids 
+            int(book_id)
+            for book_id in recommended_ids
             if isinstance(book_id, (int, str)) and str(book_id).isdigit()
         ]
-        
+
         return valid_ids[:limit]
 
     except Exception as e:
@@ -135,22 +138,24 @@ Example: [1, 5, 8, 12, 15]
         return []
 
 
-async def nl_to_filters(query: str, available_genres: list[str] = None, available_authors: list[str] = None) -> dict:
+async def nl_to_filters(
+    query: str, available_genres: list[str] = None, available_authors: list[str] = None
+) -> dict:
     """Convert natural language query to structured book filters using Gemini AI."""
     if not query or not query.strip():
         return {
             "author": None,
             "genre": None,
             "published_year": None,
-            "search_query": None
+            "search_query": None,
         }
-    
+
     # Use database genres if available, otherwise fallback to common genres
     if available_genres:
         genre_list = ", ".join(available_genres)
     else:
         genre_list = "Fiction, Non-Fiction, Mystery, Romance, Sci-Fi, Fantasy, Thriller, Biography, Historical, History, Science, Self-Help, Horror, Adventure, Poetry, Drama"
-    
+
     prompt = f"""You are a filter extraction assistant for a book library API.
 Convert this natural language query to structured book search filters.
 
@@ -201,19 +206,19 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
                 "author": None,
                 "genre": None,
                 "published_year": None,
-                "search_query": query
+                "search_query": query,
             }
-        
+
         response = await model.generate_content_async(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.3,
                 max_output_tokens=150,
-            )
+            ),
         )
 
         content = response.text.strip()
-        
+
         # Remove markdown formatting if present
         if content.startswith("```json"):
             content = content[7:]
@@ -221,46 +226,49 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
             content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
-        
+
         filters = json.loads(content.strip())
-        
+
         validated_filters = validate_filters(
-            filters, 
+            filters,
             available_genres=available_genres,
-            available_authors=available_authors
+            available_authors=available_authors,
         )
         return validated_filters
 
     except Exception as e:
         # Check for event loop issues specifically
         if "Event loop is closed" in str(e):
-            print(f"NL to filters error: Event loop is closed. This usually happens during tests if the loop is cleaned up too early.")
+            print(
+                f"NL to filters error: Event loop is closed. This usually happens during tests if the loop is cleaned up too early."
+            )
         else:
             print(f"NL to filters error: {e}")
-            
+
         return {
             "author": None,
             "genre": None,
             "published_year": None,
-            "search_query": query
+            "search_query": query,
         }
+
 
 def _calculate_match_score(query: str, candidate: str) -> float:
     """
     Calculate fuzzy match score with enhanced prefix matching.
-    
+
     Combines:
     - Character similarity (SequenceMatcher)
     - Prefix matching bonus
     - Length difference penalty
-    
+
     Returns score between 0.0 and 1.0
     """
     from difflib import SequenceMatcher
-    
+
     # Base similarity score
     similarity = SequenceMatcher(None, query, candidate).ratio()
-    
+
     # Prefix matching bonus (typos are often at the end)
     min_len = min(len(query), len(candidate))
     if min_len >= 3:
@@ -271,32 +279,33 @@ def _calculate_match_score(query: str, candidate: str) -> float:
                 prefix_match += 1
             else:
                 break
-        
+
         # Add bonus based on prefix match percentage
         prefix_ratio = prefix_match / min_len
         similarity += prefix_ratio * 0.15  # Up to 15% bonus
-    
+
     # Length difference penalty (large length differences = less likely match)
     len_diff = abs(len(query) - len(candidate))
     max_len = max(len(query), len(candidate))
     if max_len > 0:
         len_penalty = (len_diff / max_len) * 0.1
         similarity -= len_penalty
-    
+
     return max(0.0, min(1.0, similarity))
+
 
 async def nl_to_sql_where(query: str) -> dict:
     """Convert natural language query to SQL WHERE clause using Gemini AI with security validation."""
     from src.utils.sql_validator import validate_where_clause
-    
+
     if not query or not query.strip():
         return {
             "where_clause": None,
             "success": False,
             "error": "Query cannot be empty",
-            "fallback_reason": "empty_query"
+            "fallback_reason": "empty_query",
         }
-    
+
     prompt = f"""You are an AI that converts natural language search queries into a SAFE and ACCURATE SQL WHERE clause for a book library system.
 
 USER QUERY: "{query}"
@@ -390,19 +399,19 @@ Return ONLY the SQL WHERE clause.
                 "where_clause": None,
                 "success": False,
                 "error": "GEMINI_API_KEY not set",
-                "fallback_reason": "api_key_missing"
+                "fallback_reason": "api_key_missing",
             }
-        
+
         response = await model.generate_content_async(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.2,  # Lower temperature for more deterministic output
                 max_output_tokens=300,
-            )
+            ),
         )
 
         content = response.text.strip()
-        
+
         # Remove markdown formatting if present
         if content.startswith("```sql"):
             content = content[6:]
@@ -410,39 +419,39 @@ Return ONLY the SQL WHERE clause.
             content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
-        
+
         where_clause = content.strip()
-        
+
         # Remove 'WHERE' keyword if Gemini included it
-        if where_clause.upper().startswith('WHERE '):
+        if where_clause.upper().startswith("WHERE "):
             where_clause = where_clause[6:].strip()
-        
+
         # Validate the generated WHERE clause
         is_valid, validation_msg = validate_where_clause(where_clause)
-        
+
         if not is_valid:
             return {
                 "where_clause": None,
                 "success": False,
                 "error": f"Generated WHERE clause failed validation: {validation_msg}",
                 "fallback_reason": "validation_failed",
-                "attempted_clause": where_clause
+                "attempted_clause": where_clause,
             }
-        
+
         # Apply fuzzy matching to author and genre values in the WHERE clause
         # This helps handle typos like "hirenn" → "Hiren Patel"
         corrected_clause = await _apply_fuzzy_matching_to_where_clause(where_clause)
-        
+
         return {
             "where_clause": corrected_clause,
             "success": True,
             "error": None,
-            "fallback_reason": None
+            "fallback_reason": None,
         }
 
     except Exception as e:
         error_msg = str(e)
-        
+
         # Determine fallback reason
         if "quota" in error_msg.lower() or "429" in error_msg:
             fallback_reason = "quota_exceeded"
@@ -450,12 +459,12 @@ Return ONLY the SQL WHERE clause.
             fallback_reason = "event_loop_error"
         else:
             fallback_reason = "gemini_error"
-        
+
         return {
             "where_clause": None,
             "success": False,
             "error": error_msg,
-            "fallback_reason": fallback_reason
+            "fallback_reason": fallback_reason,
         }
 
 
@@ -463,29 +472,29 @@ async def _apply_fuzzy_matching_to_where_clause(where_clause: str) -> str:
     """
     Apply fuzzy matching to author and genre values in a WHERE clause.
     Handles typos like 'hirenn' → 'Hiren Patel', 'sci-fic' → 'Science Fiction'
-    
+
     Args:
         where_clause: SQL WHERE clause with potential typos
-        
+
     Returns:
         WHERE clause with corrected author/genre names
     """
     import re
     from src.repository.book import BookRepository
     from src.core.database import get_session
-    
+
     # Extract author and genre values from ILIKE patterns
     # Pattern: author ILIKE '%value%' or genre ILIKE '%value%'
     author_pattern = r"author\s+ILIKE\s+'%([^%]+)%'"
     genre_pattern = r"genre\s+ILIKE\s+'%([^%]+)%'"
-    
+
     author_matches = re.findall(author_pattern, where_clause, re.IGNORECASE)
     genre_matches = re.findall(genre_pattern, where_clause, re.IGNORECASE)
-    
+
     # If no author or genre matches, return as is
     if not author_matches and not genre_matches:
         return where_clause
-    
+
     # Get database values for fuzzy matching
     session_gen = get_session()
     session = await anext(session_gen)
@@ -495,9 +504,9 @@ async def _apply_fuzzy_matching_to_where_clause(where_clause: str) -> str:
         available_genres = await repo.get_all_genres()
     finally:
         await session_gen.aclose()
-    
+
     corrected_clause = where_clause
-    
+
     # Apply fuzzy matching to author values
     for author_value in author_matches:
         # Use the same fuzzy matching logic from validate_filters
@@ -508,7 +517,7 @@ async def _apply_fuzzy_matching_to_where_clause(where_clause: str) -> str:
             new_pattern = f"author ILIKE '%{corrected_author}%'"
             corrected_clause = corrected_clause.replace(old_pattern, new_pattern)
             print(f"Fuzzy matched author '{author_value}' → '{corrected_author}'")
-    
+
     # Apply fuzzy matching to genre values
     for genre_value in genre_matches:
         corrected_genre = _fuzzy_match_genre(genre_value, available_genres)
@@ -518,59 +527,57 @@ async def _apply_fuzzy_matching_to_where_clause(where_clause: str) -> str:
             new_pattern = f"genre ILIKE '%{corrected_genre}%'"
             corrected_clause = corrected_clause.replace(old_pattern, new_pattern)
             print(f"Fuzzy matched genre '{genre_value}' → '{corrected_genre}'")
-    
+
     return corrected_clause
 
 
 def _fuzzy_match_author(author: str, available_authors: list[str]) -> str:
     """Fuzzy match author name against database authors"""
     from difflib import SequenceMatcher
-    
+
     # Try exact match first (case-insensitive)
     exact_match = next(
-        (a for a in available_authors if a.lower() == author.lower()),
-        None
+        (a for a in available_authors if a.lower() == author.lower()), None
     )
     if exact_match:
         return exact_match
-    
+
     # Smart fuzzy matching
     best_match = None
     best_score = 0
-    
+
     for full_name in available_authors:
         candidates = [full_name] + full_name.split()
-        
+
         for candidate in candidates:
             score = SequenceMatcher(None, author.lower(), candidate.lower()).ratio()
-            
+
             # Bonus for matching first names
             if candidate == full_name.split()[0]:
                 score += 0.1
-            
+
             if score > best_score:
                 best_score = score
                 best_match = full_name
-    
+
     # Accept match if score is good enough
     if best_score >= 0.65:
         return best_match
-    
+
     return author  # Return original if no good match
 
 
 def _fuzzy_match_genre(genre: str, available_genres: list[str]) -> str:
     """Fuzzy match genre against database genres"""
     from difflib import get_close_matches
-    
+
     # Try exact match first
     exact_match = next(
-        (g for g in available_genres if g.lower() == genre.lower()),
-        None
+        (g for g in available_genres if g.lower() == genre.lower()), None
     )
     if exact_match:
         return exact_match
-    
+
     # Check for substring matches (e.g., "sci" in "Sci-Fi")
     genre_lower = genre.lower()
     for g in available_genres:
@@ -579,77 +586,83 @@ def _fuzzy_match_genre(genre: str, available_genres: list[str]) -> str:
             overlap_len = min(len(genre_lower), len(g.lower()))
             if overlap_len / max(len(genre_lower), len(g.lower())) >= 0.6:
                 return g
-    
+
     # Fuzzy matching with STRICT cutoff (0.75 = must be 75% similar)
     # This prevents nonsense matches like "science fiction" → "Education"
     matches = get_close_matches(genre, available_genres, n=1, cutoff=0.75)
     if matches:
         return matches[0]
-    
+
     return genre  # Return original if no good match
 
 
-def validate_filters(filters: dict, available_genres: list[str] = None, available_authors: list[str] = None) -> dict:
-
+def validate_filters(
+    filters: dict,
+    available_genres: list[str] = None,
+    available_authors: list[str] = None,
+) -> dict:
     """
     Validate and sanitize AI-generated filters with fuzzy matching for genres and authors.
-    
+
     Args:
         filters: Raw filters from AI
         available_genres: List of genres from database (dynamic)
         available_authors: List of authors from database (dynamic)
-    
+
     Returns:
         Validated filters dict
     """
     from difflib import get_close_matches
-    
+
     validated = {
         "author": None,
         "genre": None,
         "published_year": None,
-        "search_query": None
+        "search_query": None,
     }
-    
+
     # Validate and fuzzy match author
     if isinstance(filters.get("author"), str):
         author = filters["author"].strip()
-        
+
         if not author:
             validated["author"] = None
         elif available_authors:
             # Try exact match first (case-insensitive)
             exact_match = next(
-                (a for a in available_authors if a.lower() == author.lower()),
-                None
+                (a for a in available_authors if a.lower() == author.lower()), None
             )
-            
+
             if exact_match:
                 validated["author"] = exact_match
             else:
                 # Smart fuzzy matching with custom scoring
                 best_match = None
                 best_score = 0
-                
+
                 for full_name in available_authors:
                     # Try matching against full name and individual words
                     candidates = [full_name] + full_name.split()
-                    
+
                     for candidate in candidates:
-                        score = _calculate_match_score(author.lower(), candidate.lower())
-                        
+                        score = _calculate_match_score(
+                            author.lower(), candidate.lower()
+                        )
+
                         # Bonus for matching first names (first word in full name)
                         if candidate == full_name.split()[0]:
                             score += 0.1
-                        
+
                         if score > best_score:
                             best_score = score
                             best_match = full_name
-                
+
                 # Accept match if score is good enough
                 if best_score >= 0.65:  # 65% threshold
                     validated["author"] = best_match
-                    print(f"Fuzzy matched author '{author}' to '{best_match}' (score: {best_score:.2f})")
+                    print(
+                        f"Fuzzy matched author '{author}' to '{best_match}' (score: {best_score:.2f})"
+                    )
                 elif len(author) <= 200:
                     # Accept any reasonable author name for ILIKE partial match
                     validated["author"] = author
@@ -657,31 +670,30 @@ def validate_filters(filters: dict, available_genres: list[str] = None, availabl
             # No database authors available, accept if reasonable length
             if len(author) <= 200:
                 validated["author"] = author
-    
+
     if isinstance(filters.get("genre"), str):
         genre = filters["genre"].strip()
-        
+
         if not genre:
             validated["genre"] = None
         elif available_genres:
             # Try exact match first (case-insensitive)
             exact_match = next(
-                (g for g in available_genres if g.lower() == genre.lower()),
-                None
+                (g for g in available_genres if g.lower() == genre.lower()), None
             )
-            
+
             if exact_match:
                 validated["genre"] = exact_match
             else:
                 # Try fuzzy matching with database genres
                 # get_close_matches returns best matches sorted by similarity
                 matches = get_close_matches(
-                    genre, 
-                    available_genres, 
+                    genre,
+                    available_genres,
                     n=1,  # Get top 1 match
-                    cutoff=0.4  # Lowered threshold to catch "sci-fic" -> "Science Fiction"
+                    cutoff=0.4,  # Lowered threshold to catch "sci-fic" -> "Science Fiction"
                 )
-                
+
                 if matches:
                     validated["genre"] = matches[0]
                     print(f"Fuzzy matched '{genre}' to '{matches[0]}'")
@@ -693,7 +705,7 @@ def validate_filters(filters: dict, available_genres: list[str] = None, availabl
             # No database genres available, accept if reasonable length
             if len(genre) <= 50:
                 validated["genre"] = genre
-    
+
     if isinstance(filters.get("published_year"), (int, str)):
         try:
             year = int(filters["published_year"])
@@ -701,10 +713,10 @@ def validate_filters(filters: dict, available_genres: list[str] = None, availabl
                 validated["published_year"] = year
         except (ValueError, TypeError):
             pass
-    
+
     if isinstance(filters.get("search_query"), str):
         search = filters["search_query"].strip()
         if search and len(search) <= 500:
             validated["search_query"] = search
-    
+
     return validated
