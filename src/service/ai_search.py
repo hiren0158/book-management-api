@@ -1,8 +1,7 @@
 import os
-import json
 import logging
 import google.generativeai as genai
-from typing import Dict, Any, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -40,51 +39,3 @@ def get_gemini_model() -> genai.GenerativeModel:
     # Use a lightweight model for speed
     _model_instance = genai.GenerativeModel('gemini-2.0-flash')
     return _model_instance
-
-async def parse_natural_language_query(text: str) -> Dict[str, Any]:
-    # Get lazily initialized model
-    model = get_gemini_model()
-    
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        print("Warning: GEMINI_API_KEY not found.")
-        return {}
-
-    prompt = f"""
-    You are a smart search parser for a book library API.
-    Analyze the user's natural language query and extract structured search filters.
-
-    Target Fields:
-    - "q": General keywords, topics, or title fragments.
-    - "author": Name of the author.
-    - "genre": Book genre (e.g., Fiction, History, Science).
-    - "published_year": Publication year (integer).
-    - "sort_order": "asc" (for oldest/first) or "desc" (for newest/latest).
-
-    Rules:
-    1. Output ONLY a valid JSON object. No markdown, no explanations.
-    2. If a field is not mentioned, omit it.
-    3. Infer genre if the user mentions a category (e.g., "history books" -> genre: "History").
-    4. "books about X" usually means "q": "X" unless X is clearly a genre.
-
-    User Query: "{text}"
-    JSON Output:
-    """
-
-    try:
-        response = await model.generate_content_async(prompt)
-        content = response.text.strip()
-        
-        # Remove markdown formatting if present
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-            
-        return json.loads(content.strip())
-    except Exception as e:
-        print(f"AI Search Error: {e}")
-        # Fallback: treat the whole text as a general query
-        return {"q": text}
