@@ -9,7 +9,6 @@ from src.api.dependencies import get_current_user, require_roles
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
-
 from src.schema.common import CursorPage
 
 @router.get("", response_model=CursorPage[BookRead])

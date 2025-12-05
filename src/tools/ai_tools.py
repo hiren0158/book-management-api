@@ -245,7 +245,6 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
             "search_query": query
         }
 
-
 def _calculate_match_score(query: str, candidate: str) -> float:
     """
     Calculate fuzzy match score with enhanced prefix matching.
@@ -285,9 +284,6 @@ def _calculate_match_score(query: str, candidate: str) -> float:
         similarity -= len_penalty
     
     return max(0.0, min(1.0, similarity))
-
-
-
 
 async def nl_to_sql_where(query: str) -> dict:
     """Convert natural language query to SQL WHERE clause using Gemini AI with security validation."""
@@ -355,7 +351,7 @@ CRITICAL RULES:
    - "in second half of 2025" → EXTRACT(YEAR FROM published_date) = 2025 AND EXTRACT(MONTH FROM published_date) > 6
 
 6. **OUTPUT:**
-   Return ONLY the WHERE clause content (no "WHERE" keyword, no explanations)
+   Return ONLY the WHERE clause content (no "WHERE explanation" keyword, nos)
 
 EXAMPLES:
 

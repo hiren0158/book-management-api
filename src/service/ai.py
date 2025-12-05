@@ -6,7 +6,6 @@ from src.repository.borrowing import BorrowingRepository
 from src.repository.review import ReviewRepository
 from src.tools.ai_tools import recommend_books_ai, nl_to_filters
 
-
 class AIService:
     def __init__(self, session: AsyncSession):
         self.user_repo = UserRepository(session)

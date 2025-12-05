@@ -62,7 +62,6 @@ async def create_user(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-
 @router.put("/{user_id}", response_model=UserRead)
 async def update_user(
     user_id: int,
@@ -71,13 +70,12 @@ async def update_user(
     current_user: User = Depends(get_current_user)
 ):
     user_service = UserService(session)
-    
+
     try:
         user = await user_service.update_user(user_id, user_data, current_user)
         return user
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
