@@ -60,31 +60,39 @@ A modern, production-ready RESTful API for managing a **book library system** wi
 
 ## 2. System Architecture
 
-### 2.1 High-Level Architecture
+### 2.1 High-Level Architecture (Microservices)
 
 ```mermaid
 graph TB
-    Client[Client Applications] --> API[FastAPI Application]
-    API --> Auth[Authentication Layer]
-    API --> RBAC[RBAC Middleware]
+    Client[Client Applications] --> MainApp[FastAPI Main App<br/>Render.com]
+    
+    MainApp --> Auth[Authentication Layer]
+    MainApp --> RBAC[RBAC Middleware]
     
     Auth --> JWT[JWT Token Service]
     RBAC --> Deps[Dependencies Layer]
     
-    API --> Routes[API Routes]
+    MainApp --> Routes[API Routes]
     Routes --> Services[Business Logic Layer]
     Services --> Repos[Repository Layer]
     Repos --> DB[(PostgreSQL Database)]
     
     Services --> AITools[AI Tools Layer]
     AITools --> Gemini[Gemini AI API]
-    AITools --> VectorDB[ChromaDB Vector Store]
-    AITools --> Embeddings[Sentence Transformers]
     
-    style API fill:#4CAF50
+    Services --> RAGClient[RAG HTTP Client]
+    RAGClient -->|HTTPS + API Key| RAGService[RAG Microservice<br/>HuggingFace Spaces]
+    
+    RAGService --> PDFParser[PDF Processing]
+    RAGService --> VectorDB[ChromaDB Vector Store]
+    RAGService --> Embeddings[Sentence Transformers]
+    RAGService --> GeminiRAG[Gemini AI]
+    
+    style MainApp fill:#4CAF50
     style DB fill:#2196F3
     style Gemini fill:#FF9800
-    style VectorDB fill:#9C27B0
+    style RAGService fill:#9C27B0
+    style VectorDB fill:#673AB7
 ```
 
 ### 2.2 Layered Architecture
@@ -114,28 +122,39 @@ graph TB
 ### 2.3 AI/ML Integration
 
 ```
-┌────────────────────────────────────────────────────┐
-│              Gemini AI Services                     │
-├────────────────────────────────────────────────────┤
-│                                                     │
-│  1. Book Recommendations                           │
-│     • Analyzes user history                        │
-│     • Genre matching with relationships            │
-│     • Personalized suggestions                     │
-│                                                     │
-│  2. Natural Language Search                        │
-│     • SQL WHERE clause generation                  │
-│     • Filter extraction with fuzzy matching        │
-│     • Security validation (SQL injection)          │
-│                                                     │
-│  3. RAG Document Q&A                               │
-│     • PDF text extraction (PyMuPDF)               │
-│     • Text chunking (1200 chars, 200 overlap)     │
-│     • Vector embeddings (Sentence Transformers)    │
-│     • Semantic search (ChromaDB)                   │
-│     • Context-aware answers                        │
-│                                                     │
-└────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│          MAIN APP (Render) - AI Services                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  1. Book Recommendations (Gemini AI)                         │
+│     • Analyzes user history                                  │
+│     • Genre matching with relationships                      │
+│     • Personalized suggestions                               │
+│                                                               │
+│  2. Natural Language Search (Gemini AI)                      │
+│     • SQL WHERE clause generation                            │
+│     • Filter extraction with fuzzy matching                  │
+│     • Security validation (SQL injection prevention)         │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+                              ↓
+                      HTTP API Connection
+                      (API Key Authentication)
+                              ↓
+┌──────────────────────────────────────────────────────────────┐
+│    RAG MICROSERVICE (HuggingFace Spaces) - Document Q&A     │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  3. RAG Document Q&A System                                  │
+│     • PDF text extraction (PyMuPDF)                         │
+│     • Text chunking (1200 chars, 200 overlap)               │
+│     • Vector embeddings (Sentence Transformers)              │
+│     • Semantic search (ChromaDB)                             │
+│     • Context-aware answers (Gemini AI)                      │
+│     • API: /upload, /ask, /documents/{id}                    │
+│     • Authentication: X-API-Key header                       │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -155,13 +174,21 @@ graph TB
 
 ### 3.2 AI/ML Stack
 
+**Main Application:**
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| **LLM Provider** | Google Gemini 2.0 Flash | Natural language processing |
+| **LLM Provider** | Google Gemini 2.0 Flash | Recommendations & NL Search |
+| **HTTP Client** | httpx | Communication with RAG service |
+
+**RAG Microservice (HuggingFace Spaces):**
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Framework** | FastAPI | Microservice API |
+| **LLM Provider** | Google Gemini 2.0 Flash | Answer generation |
 | **Vector DB** | ChromaDB | Semantic search |
-| **Embeddings** | Sentence Transformers | Text vectorization |
-| **PDF Parser** | PyMuPDF | Document extraction |
-| **Text Processing** | WordNinja | Text chunking |
+| **Embeddings** | Sentence Transformers (BAAI/bge-small-en-v1.5) | Text vectorization |
+| **PDF Parser** | PyMuPDF (fitz) | Document extraction |
+| **Deployment** | Docker on HuggingFace Spaces | Cloud hosting |
 
 ### 3.3 Security & Authentication
 
@@ -412,28 +439,55 @@ Body: {"query": "science fiction about space from 2020"}
 - Author name matching (prefix bonus, length penalty)
 - Genre correction (0.75 similarity threshold)
 
-### 5.3 RAG (Retrieval-Augmented Generation)
+### 5.3 RAG (Retrieval-Augmented Generation) - Microservice Architecture
+
+**Deployed as Standalone Microservice on HuggingFace Spaces**
 
 **Complete RAG Pipeline:**
 
 ```mermaid
-graph TD
-    A[PDF Upload] --> B[PyMuPDF Text Extraction]
-    B --> C[Text Chunking]
-    C --> D[Generate Embeddings]
-    D --> E[Store in ChromaDB]
+graph TB
+    subgraph "Main App (Render)"
+        A[User Upload PDF] --> B[Main API: POST /rag/upload]
+        B --> C[Create DB Record]
+        C --> D[RAG HTTP Client]
+        
+        H[User Ask Question] --> I[Main API: POST /rag/ask]
+        I --> J[Check Permissions]
+        J --> K[RAG HTTP Client]
+    end
     
-    F[User Question] --> G[Embed Question]
-    G --> H[Vector Similarity Search]
-    H --> I[Retrieve Top K Chunks]
-    I --> J[Build Context]
-    J --> K[Send to Gemini]
-    K --> L[Generate Answer]
+    subgraph "RAG Microservice (HuggingFace)"
+        D -->|HTTPS + API Key| E[POST /upload]
+        E --> F[PyMuPDF Extraction]
+        F --> G[Text Chunking]
+        G --> M[Generate Embeddings]
+        M --> N[Store in ChromaDB]
+        
+        K -->|HTTPS + API Key| L[POST /ask]
+        L --> O[Embed Question]
+        O --> P[Vector Search]
+        P --> Q[Retrieve Chunks]
+        Q --> R[Build Context]
+        R --> S[Gemini AI]
+        S --> T[Generate Answer]
+    end
+    
+    T --> K
+    N --> D
     
     style A fill:#4CAF50
-    style F fill:#4CAF50
-    style L fill:#FF9800
+    style H fill:#4CAF50
+    style T fill:#FF9800
+    style E fill:#9C27B0
+    style L fill:#9C27B0
 ```
+
+**Microservice Architecture:**
+- 🔗 **Main App (Render):** Handles auth, permissions, database
+- 🚀 **RAG Service (HuggingFace Spaces):** Handles ML processing
+- 🔐 **Communication:** HTTPS with API key authentication
+- 📦 **Deployment:** Docker container on HuggingFace
 
 **Capabilities:**
 - ✅ PDF document upload and processing
@@ -444,6 +498,8 @@ graph TD
 - ✅ Multi-document search
 - ✅ Document access control (user-owned docs)
 - ✅ Context-aware answers with citations
+- ✅ Independent scaling for ML workloads
+- ✅ Reduced main app deployment size (~500MB lighter)
 
 **Endpoints:**
 ```
@@ -456,12 +512,17 @@ DELETE /rag/documents/{id}         # Delete document
 
 | Component | Implementation |
 |-----------|---------------|
+| **Main App** | FastAPI on Render.com |
+| **RAG Service** | FastAPI on HuggingFace Spaces |
+| **Communication** | httpx async client with API key |
 | **PDF Parser** | PyMuPDF (fitz) |
 | **Chunking Strategy** | 1200 chars max, 200 overlap |
-| **Embedding Model** | all-MiniLM-L6-v2 (384 dims) |
+| **Embedding Model** | BAAI/bge-small-en-v1.5 (384 dims) |
 | **Vector Store** | ChromaDB with cosine similarity |
 | **LLM** | Gemini 2.0 Flash |
-| **Timeout Protection** | 60s for free tier |
+| **Timeout Protection** | 300s (5 minutes) |
+| **Authentication** | X-API-Key header |
+| **Service URL** | https://Hiren158-rag-microservice.hf.space |
 
 **Example Usage:**
 ```bash
