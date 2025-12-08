@@ -20,19 +20,21 @@ genai.configure(api_key=api_key)
 
 try:
     models = genai.list_models()
-    
+
     # Filter models that support generateContent
-    generate_models = [m for m in models if 'generateContent' in m.supported_generation_methods]
-    
+    generate_models = [
+        m for m in models if "generateContent" in m.supported_generation_methods
+    ]
+
     print(f"✅ Found {len(generate_models)} models that support generateContent:\n")
-    
+
     for model in generate_models:
         print(f"📝 {model.name}")
         print(f"   Display Name: {model.display_name}")
         print(f"   Description: {model.description[:80]}...")
         print()
-    
+
     print("\n💡 Try using one of these models in your app!")
-    
+
 except Exception as e:
     print(f"❌ Error listing models: {e}")

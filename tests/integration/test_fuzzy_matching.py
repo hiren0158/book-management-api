@@ -162,7 +162,6 @@ async def test_keyword_plural_coder_to_coders(client, sample_books):
     assert any(b["title"] == "The Coder's Path" for b in data["books"])
 
 
-
 @pytest.mark.asyncio
 async def test_keyword_verb_form_developing(client, sample_books):
     """Test keyword verb form: 'developing' should match 'developer'"""

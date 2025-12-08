@@ -232,7 +232,9 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
 
         # Check if response was blocked by safety filters
         if not response.candidates or not response.candidates[0].content.parts:
-            print(f"NL to filters: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})")
+            print(
+                f"NL to filters: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})"
+            )
             # Apply simple typo correction before falling back
             corrected_query = _simple_typo_correction(query)
             return {
@@ -297,12 +299,12 @@ def _simple_typo_correction(text: str) -> str:
         "romace": "romance",
         "advnture": "adventure",
     }
-    
+
     # Apply corrections (case-insensitive)
     corrected = text.lower()
     for typo, correction in typo_map.items():
         corrected = corrected.replace(typo, correction)
-    
+
     return corrected
 
 
@@ -487,7 +489,9 @@ Return ONLY the SQL WHERE clause.
 
         # Check if response was blocked by safety filters
         if not response.candidates or not response.candidates[0].content.parts:
-            print(f"NL to SQL WHERE: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})")
+            print(
+                f"NL to SQL WHERE: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})"
+            )
             return {
                 "where_clause": None,
                 "success": False,

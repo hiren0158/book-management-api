@@ -27,22 +27,22 @@ print("📡 Testing gemini-2.5-flash-lite model...")
 try:
     model = genai.GenerativeModel("gemini-2.5-flash-lite")
     response = model.generate_content("Say hello in one sentence")
-    
+
     print("✅ SUCCESS! API key is working with gemini-2.5-flash-lite!")
     print(f"📝 Response: {response.text}")
     print()
-    
+
     # Show quota info
     print("📊 API Test Results:")
     print("   Model: gemini-2.5-flash-lite")
     print("   Status: ✅ Active")
     print("   Quota: ✅ Available")
-    
+
 except Exception as e:
     print("❌ ERROR: API key test failed")
     print(f"   Error: {str(e)}")
     print()
-    
+
     if "quota" in str(e).lower():
         print("💡 This looks like a quota issue:")
         print("   - Your API key might have hit the daily limit")
@@ -52,7 +52,7 @@ except Exception as e:
         print("💡 This looks like an invalid key:")
         print("   - Double-check your GEMINI_API_KEY in .env")
         print("   - Get a new key at: https://makersuite.google.com/app/apikey")
-    
+
     exit(1)
 
 print()
