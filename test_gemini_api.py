@@ -22,19 +22,19 @@ print()
 # Configure Gemini
 genai.configure(api_key=api_key)
 
-# Test with gemini-2.5-flash
-print("📡 Testing gemini-2.5-flash model...")
+# Test with gemini-2.5-flash-lite
+print("📡 Testing gemini-2.5-flash-lite model...")
 try:
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash-lite")
     response = model.generate_content("Say hello in one sentence")
     
-    print("✅ SUCCESS! API key is working with gemini-2.5-flash!")
+    print("✅ SUCCESS! API key is working with gemini-2.5-flash-lite!")
     print(f"📝 Response: {response.text}")
     print()
     
     # Show quota info
     print("📊 API Test Results:")
-    print("   Model: gemini-2.5-flash")
+    print("   Model: gemini-2.5-flash-lite")
     print("   Status: ✅ Active")
     print("   Quota: ✅ Available")
     

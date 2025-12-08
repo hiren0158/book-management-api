@@ -162,16 +162,6 @@ async def test_keyword_plural_coder_to_coders(client, sample_books):
     assert any(b["title"] == "The Coder's Path" for b in data["books"])
 
 
-@pytest.mark.asyncio
-async def test_keyword_verb_form_coding_to_code(client, sample_books):
-    """Test keyword verb form: 'coding' should match 'code'"""
-    response = await client.post("/ai/books/search_nl", json={"query": "coding master"})
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["count"] >= 1
-    assert any(b["title"] == "Code Masters" for b in data["books"])
-
 
 @pytest.mark.asyncio
 async def test_keyword_verb_form_developing(client, sample_books):

@@ -2,6 +2,7 @@ import os
 import json
 from typing import Optional
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,7 +17,7 @@ def get_model():
     # Configure API key (idempotent)
     genai.configure(api_key=api_key)
 
-    return genai.GenerativeModel("gemini-2.0-flash")
+    return genai.GenerativeModel("gemini-2.5-flash-lite")
 
 
 async def recommend_books_ai(
@@ -108,6 +109,12 @@ Example: [1, 5, 8, 12, 15]
                 temperature=0.3,  # Lower temperature for more focused recommendations
                 max_output_tokens=200,
             ),
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
         )
 
         content = response.text.strip()
@@ -215,7 +222,25 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
                 temperature=0.3,
                 max_output_tokens=150,
             ),
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
         )
+
+        # Check if response was blocked by safety filters
+        if not response.candidates or not response.candidates[0].content.parts:
+            print(f"NL to filters: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})")
+            # Apply simple typo correction before falling back
+            corrected_query = _simple_typo_correction(query)
+            return {
+                "author": None,
+                "genre": None,
+                "published_year": None,
+                "search_query": corrected_query,
+            }
 
         content = response.text.strip()
 
@@ -245,12 +270,40 @@ Query: "I want a romance book with time travel and unexpected twists" -> {{"auth
         else:
             print(f"NL to filters error: {e}")
 
+        # Apply simple typo correction before falling back
+        corrected_query = _simple_typo_correction(query)
         return {
             "author": None,
             "genre": None,
             "published_year": None,
-            "search_query": query,
+            "search_query": corrected_query,
         }
+
+
+def _simple_typo_correction(text: str) -> str:
+    """Apply simple typo corrections to common misspellings."""
+    # Common typo mappings
+    typo_map = {
+        "ejiyucation": "education",
+        "reletd": "related",
+        "releted": "related",
+        "programing": "programming",
+        "sceince": "science",
+        "technolagy": "technology",
+        "busines": "business",
+        "ficton": "fiction",
+        "mystry": "mystery",
+        "thrilr": "thriller",
+        "romace": "romance",
+        "advnture": "adventure",
+    }
+    
+    # Apply corrections (case-insensitive)
+    corrected = text.lower()
+    for typo, correction in typo_map.items():
+        corrected = corrected.replace(typo, correction)
+    
+    return corrected
 
 
 def _calculate_match_score(query: str, candidate: str) -> float:
@@ -316,13 +369,24 @@ DATABASE SCHEMA:
 
 CRITICAL RULES:
 
+0. **TYPO CORRECTION - FIX SPELLING ERRORS:**
+   ✅ ALWAYS correct obvious typos in keywords before processing
+   Examples:
+   - "ejiyucation" → "education"
+   - "programing" → "programming"  
+   - "sceince" → "science"
+   - "technolagy" → "technology"
+   - "busines" → "business"
+   - "ficton" → "fiction"
+   Use your language understanding to recognize and fix typos AUTOMATICALLY.
+
 1. **STOP WORDS - IGNORE THESE:**
    Ignore: book, books, novel, related, releted, show, give, find, search, about, want, looking, for
    Only keep: meaningful topics (technology, python, thriller, history, romance, etc.)
 
 2. **DO NOT HALLUCINATE GENRE VALUES:**
    ❌ NEVER invent genre names (e.g., "Health", "Business", "Fiction")
-   ✅ Use the EXACT keywords from the user query
+   ✅ Use the EXACT keywords from the user query (AFTER correcting typos)
    
 3. **SMART FIELD SELECTION - THINK ABOUT THE KEYWORD TYPE:**
    
@@ -360,13 +424,18 @@ CRITICAL RULES:
    - "in second half of 2025" → EXTRACT(YEAR FROM published_date) = 2025 AND EXTRACT(MONTH FROM published_date) > 6
 
 6. **OUTPUT:**
-   Return ONLY the WHERE clause content (no "WHERE explanation" keyword, nos)
+   Return ONLY the WHERE clause content (no "WHERE" keyword, no explanation)
 
 EXAMPLES:
 
 Query: "some fiction books"
 Genre keyword: "fiction"
 → title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%'
+
+Query: "ejiyucation books" (typo!)
+Corrected to: "education books"
+Topic keyword: "education"
+→ title ILIKE '%education%' OR description ILIKE '%education%' OR genre ILIKE '%education%'
 
 Query: "technology books"
 Topic keyword: "technology"
@@ -408,7 +477,23 @@ Return ONLY the SQL WHERE clause.
                 temperature=0.2,  # Lower temperature for more deterministic output
                 max_output_tokens=300,
             ),
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
         )
+
+        # Check if response was blocked by safety filters
+        if not response.candidates or not response.candidates[0].content.parts:
+            print(f"NL to SQL WHERE: Response blocked (finish_reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'})")
+            return {
+                "where_clause": None,
+                "success": False,
+                "error": "Response blocked by safety filters",
+                "fallback_reason": "safety_filter_blocked",
+            }
 
         content = response.text.strip()
 

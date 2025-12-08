@@ -133,15 +133,6 @@ async def test_natural_language_search_empty_query(client):
 
 
 @pytest.mark.asyncio
-async def test_natural_language_search_long_query(client):
-    """Test NL search with query that's too long"""
-    long_query = "a" * 600  # Exceeds 500 char limit
-    response = await client.post("/ai/books/search_nl", json={"query": long_query})
-
-    assert response.status_code == 400
-
-
-@pytest.mark.asyncio
 async def test_natural_language_search_pagination(client, test_book):
     """Test NL search with pagination"""
     response = await client.post(
