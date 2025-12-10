@@ -17,7 +17,7 @@ def get_model():
     # Configure API key (idempotent)
     genai.configure(api_key=api_key)
 
-    return genai.GenerativeModel("gemini-2.5-flash-lite")
+    return genai.GenerativeModel("gemini-flash-latest")
 
 
 async def recommend_books_ai(
@@ -500,6 +500,11 @@ Return ONLY the SQL WHERE clause.
             }
 
         content = response.text.strip()
+        
+        # DEBUG: Log the full raw response to diagnose truncation
+        print(f"[DEBUG NL-to-SQL] Raw Gemini Response: '{content}'")
+        print(f"[DEBUG NL-to-SQL] Response length: {len(content)} chars")
+        print(f"[DEBUG NL-to-SQL] Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}")
 
         # Remove markdown formatting if present
         if content.startswith("```sql"):
@@ -507,9 +512,12 @@ Return ONLY the SQL WHERE clause.
         if content.startswith("```"):
             content = content[3:]
         if content.endswith("```"):
-            content = content[:-3]
+            content = content[:-3:]
 
         where_clause = content.strip()
+        
+        # DEBUG: Log after cleanup
+        print(f"[DEBUG NL-to-SQL] WHERE clause after cleanup: '{where_clause}'")
 
         # Remove 'WHERE' keyword if Gemini included it
         if where_clause.upper().startswith("WHERE "):
