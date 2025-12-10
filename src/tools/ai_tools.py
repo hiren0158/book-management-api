@@ -500,11 +500,13 @@ Return ONLY the SQL WHERE clause.
             }
 
         content = response.text.strip()
-        
+
         # DEBUG: Log the full raw response to diagnose truncation
         print(f"[DEBUG NL-to-SQL] Raw Gemini Response: '{content}'")
         print(f"[DEBUG NL-to-SQL] Response length: {len(content)} chars")
-        print(f"[DEBUG NL-to-SQL] Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}")
+        print(
+            f"[DEBUG NL-to-SQL] Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}"
+        )
 
         # Remove markdown formatting if present
         if content.startswith("```sql"):
@@ -515,7 +517,7 @@ Return ONLY the SQL WHERE clause.
             content = content[:-3:]
 
         where_clause = content.strip()
-        
+
         # DEBUG: Log after cleanup
         print(f"[DEBUG NL-to-SQL] WHERE clause after cleanup: '{where_clause}'")
 

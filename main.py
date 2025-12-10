@@ -68,8 +68,8 @@ import os
 
 # CORS Configuration - Restrict in production
 allowed_origins = os.getenv(
-    "ALLOWED_ORIGINS", 
-    "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://localhost:8080",
 ).split(",")
 
 app.add_middleware(
