@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.database import get_session
 from src.service.auth import AuthService
-from src.schema.user import UserCreate
+from src.schema.user import UserCreate, UserRead
 from src.schema.auth import Token
 from pydantic import BaseModel, EmailStr
+from src.api.dependencies import get_current_user
+from src.model.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -57,3 +59,9 @@ async def refresh_token(
         return token
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+
+
+@router.get("/me", response_model=UserRead)
+async def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    """Get current authenticated user's profile"""
+    return current_user

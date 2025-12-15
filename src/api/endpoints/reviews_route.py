@@ -16,6 +16,44 @@ class CreateReviewRequest(BaseModel):
     text: str
 
 
+@router.get("/reviews", response_model=list[ReviewRead])
+async def list_all_reviews(
+    limit: int = Query(100, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(require_roles("Admin", "Librarian")),
+):
+    """List all reviews (Admin/Librarian only)"""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from src.model.review import Review
+    
+    # Get all reviews with user data eagerly loaded
+    result = await session.execute(
+        select(Review)
+        .options(selectinload(Review.user))
+        .order_by(Review.created_at.desc())
+        .limit(limit)
+    )
+    reviews = result.scalars().all()
+    
+    # Populate user_name and user_email
+    review_reads = []
+    for review in reviews:
+        review_dict = {
+            "id": review.id,
+            "user_id": review.user_id,
+            "book_id": review.book_id,
+            "rating": review.rating,
+            "text": review.text,
+            "created_at": review.created_at,
+            "user_name": review.user.name if review.user else None,
+            "user_email": review.user.email if review.user else None,
+        }
+        review_reads.append(review_dict)
+    
+    return review_reads
+
+
 @router.post(
     "/books/{book_id}/reviews",
     response_model=ReviewRead,

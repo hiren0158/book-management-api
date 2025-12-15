@@ -10,6 +10,7 @@ from src.api.endpoints import (
     reviews_router,
     ai_tools_router,
     rag_router,
+    admin_router,
 )
 
 # Configure logging
@@ -87,6 +88,7 @@ app.include_router(borrowings_router)
 app.include_router(reviews_router)
 app.include_router(ai_tools_router)
 app.include_router(rag_router)
+app.include_router(admin_router)
 
 
 @app.get("/")

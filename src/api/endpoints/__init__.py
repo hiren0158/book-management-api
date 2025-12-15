@@ -5,6 +5,7 @@ from .borrowings_route import router as borrowings_router
 from .reviews_route import router as reviews_router
 from .ai_tools_route import router as ai_tools_router
 from .rag import router as rag_router
+from .admin_route import router as admin_router
 
 __all__ = [
     "auth_router",
@@ -14,4 +15,5 @@ __all__ = [
     "reviews_router",
     "ai_tools_router",
     "rag_router",
+    "admin_router",
 ]

@@ -17,7 +17,7 @@ def get_model():
     # Configure API key (idempotent)
     genai.configure(api_key=api_key)
 
-    return genai.GenerativeModel("gemini-flash-latest")
+    return genai.GenerativeModel("gemini-2.5-flash")
 
 
 async def recommend_books_ai(
@@ -126,8 +126,31 @@ Example: [1, 5, 8, 12, 15]
             content = content[3:]
         if content.endswith("```"):
             content = content[:-3]
+        
+        content = content.strip()
+        
+        # Try to extract JSON array if wrapped in text
+        import re
+        array_match = re.search(r'\[[\d\s,]+\]', content)
+        if array_match:
+            content = array_match.group(0)
 
-        recommended_ids = json.loads(content.strip())
+        # Clean up malformed JSON (e.g., [1 2 3] -> [1,2,3])
+        # Replace spaces between numbers with commas
+        content = re.sub(r'(\d)\s+(\d)', r'\1,\2', content)
+
+        try:
+            recommended_ids = json.loads(content)
+        except json.JSONDecodeError as e:
+            print(f"AI recommendation JSON parse error: {e}")
+            print(f"Problematic content: '{content}'")
+            # Fallback: try to extract numbers manually
+            numbers = re.findall(r'\d+', content)
+            recommended_ids = [int(n) for n in numbers[:limit]]
+            if recommended_ids:
+                print(f"Fallback extraction succeeded: {recommended_ids}")
+            else:
+                return []
 
         if not isinstance(recommended_ids, list):
             return []
@@ -361,106 +384,51 @@ async def nl_to_sql_where(query: str) -> dict:
             "fallback_reason": "empty_query",
         }
 
-    prompt = f"""You are an AI that converts natural language search queries into a SAFE and ACCURATE SQL WHERE clause for a book library system.
+    # Preprocess query: remove stop words to reduce Gemini errors
+    stop_words = {
+        "i", "want", "to", "read", "find", "show", "me", "get", "search",
+        "looking", "for", "about", "related", "releted", "suggest", "sugest",
+        "book", "books", "novel", "novels",
+        "and", "or", "the", "a", "an", "also", "some", "any", "which", "is", "are",
+        "by", "written", "should", "be", "on", "in", "at", "of", "with",
+        "this", "that", "these", "those", "release", "released", "year", "have", "has",
+        "type", "kind", "sort", "rating", "above", "below", "over", "under",
+        "average", "avarage", "avg", "so", "please", "can", "you", "help"
+    }
 
-USER QUERY: "{query}"
+    # Split query into words and filter stop words
+    words = query.lower().split()
+    meaningful_words = [w for w in words if w not in stop_words and len(w) > 2]
 
-DATABASE SCHEMA:
-- Table: books
-- Searchable columns: title, author, genre, description, published_date, isbn
+    # If we filtered out everything, use original query
+    cleaned_query = " ".join(meaningful_words) if meaningful_words else query
 
-CRITICAL RULES:
+    print(f"[DEBUG] Original query: '{query}'")
+    print(f"[DEBUG] Cleaned query: '{cleaned_query}'")
 
-0. **TYPO CORRECTION - FIX SPELLING ERRORS:**
-   ✅ ALWAYS correct obvious typos in keywords before processing
-   Examples:
-   - "ejiyucation" → "education"
-   - "programing" → "programming"  
-   - "sceince" → "science"
-   - "technolagy" → "technology"
-   - "busines" → "business"
-   - "ficton" → "fiction"
-   Use your language understanding to recognize and fix typos AUTOMATICALLY.
+    prompt = f"""Convert keywords to SQL WHERE clause for book search.
 
-1. **STOP WORDS - IGNORE THESE:**
-   Ignore: book, books, novel, related, releted, show, give, find, search, about, want, looking, for
-   Only keep: meaningful topics (technology, python, thriller, history, romance, etc.)
+Query: "{cleaned_query}"
 
-2. **DO NOT HALLUCINATE GENRE VALUES:**
-   ❌ NEVER invent genre names (e.g., "Health", "Business", "Fiction")
-   ✅ Use the EXACT keywords from the user query (AFTER correcting typos)
-   
-3. **SMART FIELD SELECTION - THINK ABOUT THE KEYWORD TYPE:**
-   
-   For GENRE keywords (fiction, mystery, thriller, romance, horror, fantasy, sci-fi, history, biography, etc.):
-   → Search in: title, description, genre ONLY
-   → DO NOT search in: author
-   → Pattern: (title ILIKE '%keyword%' OR description ILIKE '%keyword%' OR genre ILIKE '%keyword%')
-   
-   For TOPIC keywords (technology, python, war, space, love, adventure, detective, education, science, etc.):
-   → Search in: title, description, genre (since topics can also be genres)
-   → DO NOT search in: author
-   → Pattern: (title ILIKE '%keyword%' OR description ILIKE '%keyword%' OR genre ILIKE '%keyword%')
-   
-   For AUTHOR keywords (when query explicitly mentions author name):
-   → Search in: author ONLY
-   → Pattern: author ILIKE '%name%'
+INSTRUCTIONS:
+1. AUTHOR names (people) → search in 'author' column ONLY
+2. DATE/TIME (month, year) → use EXTRACT(MONTH/YEAR FROM published_date)
+3. Other keywords (genre, topic) → search in: title, description, genre
+4. Use ILIKE for text, EXTRACT for dates
 
-4. **AND vs OR LOGIC:**
-   - Multiple topics → OR (user wants ANY match)
-   - Topic + Author → AND
-   - Topic + Year → AND
-
-5. **DATES:**
-   "from 2020" → EXTRACT(YEAR FROM published_date) = 2020
-   
-   **IMPORTANT - Year Abbreviations:**
-   - "in 25" or "from 25" → means 2025 (current century)
-   - "in 20" or "from 20" → means 2020 (current century)
-   - Always interpret 2-digit years as 20XX
-   
-   **Date Ranges:**
-   - "after 2020" → EXTRACT(YEAR FROM published_date) > 2020
-   - "before 2020" → EXTRACT(YEAR FROM published_date) < 2020
-   - "in first half of 2025" → EXTRACT(YEAR FROM published_date) = 2025 AND EXTRACT(MONTH FROM published_date) <= 6
-   - "in second half of 2025" → EXTRACT(YEAR FROM published_date) = 2025 AND EXTRACT(MONTH FROM published_date) > 6
-
-6. **OUTPUT:**
-   Return ONLY the WHERE clause content (no "WHERE" keyword, no explanation)
+DATE HANDLING:
+- Month names (january, february, ..., june, ..., december) → EXTRACT(MONTH FROM published_date) = [1-12]
+- "2025" or current year → EXTRACT(YEAR FROM published_date) = 2025
+- "june 2025" or "june this year" → EXTRACT(MONTH FROM published_date) = 6 AND EXTRACT(YEAR FROM published_date) = 2025
 
 EXAMPLES:
+"adventure" → title ILIKE '%adventure%' OR description ILIKE '%adventure%' OR genre ILIKE '%adventure%'
 
-Query: "some fiction books"
-Genre keyword: "fiction"
-→ title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%'
+"adventure june" → (title ILIKE '%adventure%' OR description ILIKE '%adventure%' OR genre ILIKE '%adventure%') AND EXTRACT(MONTH FROM published_date) = 6
 
-Query: "ejiyucation books" (typo!)
-Corrected to: "education books"
-Topic keyword: "education"
-→ title ILIKE '%education%' OR description ILIKE '%education%' OR genre ILIKE '%education%'
+"fiction lia carter" → (title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%') AND author ILIKE '%lia carter%'
 
-Query: "technology books"
-Topic keyword: "technology"
-→ title ILIKE '%technology%' OR description ILIKE '%technology%' OR genre ILIKE '%technology%'
-
-Query: "thriller by king"  
-Genre: "thriller", Author: "king"
-→ (title ILIKE '%thriller%' OR description ILIKE '%thriller%' OR genre ILIKE '%thriller%') AND (author ILIKE '%king%')
-
-Query: "python programming"
-Topic keywords: "python", "programming"
-→ (title ILIKE '%python%' OR description ILIKE '%python%' OR genre ILIKE '%python%') OR (title ILIKE '%programming%' OR description ILIKE '%programming%' OR genre ILIKE '%programming%')
-
-Query: "mystery detective"
-Genre: "mystery", Topic: "detective"  
-→ (title ILIKE '%mystery%' OR description ILIKE '%mystery%' OR genre ILIKE '%mystery%') OR (title ILIKE '%detective%' OR description ILIKE '%detective%' OR genre ILIKE '%detective%')
-
-Query: "fiction from 2020"
-Genre: "fiction", Date filter
-→ (title ILIKE '%fiction%' OR description ILIKE '%fiction%' OR genre ILIKE '%fiction%') AND EXTRACT(YEAR FROM published_date) = 2020
-
-NOW GENERATE FOR: "{query}"
-Return ONLY the SQL WHERE clause.
+Generate SQL for: "{cleaned_query}"
 """
 
     try:
@@ -476,8 +444,9 @@ Return ONLY the SQL WHERE clause.
         response = await model.generate_content_async(
             prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.2,  # Lower temperature for more deterministic output
-                max_output_tokens=300,
+                temperature=0.1,  # Very low temperature for consistent output
+                max_output_tokens=800,  # Increased to prevent truncation
+                top_p=0.95,
             ),
             safety_settings={
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,

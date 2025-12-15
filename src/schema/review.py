@@ -16,5 +16,7 @@ class ReviewRead(BaseModel):
     rating: int
     text: str
     created_at: datetime
+    user_name: str | None = None  # Reviewer's name
+    user_email: str | None = None  # Reviewer's email (fallback)
 
     model_config = ConfigDict(from_attributes=True)

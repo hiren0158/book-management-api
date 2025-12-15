@@ -48,6 +48,28 @@ async def get_user(
     return user
 
 
+@router.get("/{user_id}/profile")
+async def get_user_profile(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Get basic public user info (name only) - accessible by any authenticated user"""
+    user_service = UserService(session)
+    user = await user_service.get_user(user_id)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    # Return only public info
+    return {
+        "id": user.id,
+        "name": user.name,
+    }
+
+
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: UserCreate,

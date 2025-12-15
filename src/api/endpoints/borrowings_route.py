@@ -61,6 +61,7 @@ async def list_borrowings(
     user_id: Optional[int] = Query(None),
     book_id: Optional[int] = Query(None),
     active_only: bool = Query(False),
+    all: bool = Query(False, description="Get all borrowings (Admin/Librarian only)"),
     limit: int = Query(10, ge=1, le=100),
     cursor: Optional[str] = Query(None),
     session: AsyncSession = Depends(get_session),
@@ -68,6 +69,24 @@ async def list_borrowings(
 ):
     borrowing_service = BorrowingService(session)
 
+    # Admin wants ALL borrowings (all users, all statuses)
+    if all:
+        if current_user.role.name not in ["Admin", "Librarian"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, 
+                detail="Only admins can view all borrowings"
+            )
+        # Get all borrowings without filtering
+        from sqlalchemy import select
+        from src.model.borrowing import Borrowing
+        
+        result = await session.execute(
+            select(Borrowing).order_by(Borrowing.borrowed_at.desc()).limit(limit)
+        )
+        borrowings = result.scalars().all()
+        return borrowings
+    
+    # Filter by specific user
     if user_id:
         if user_id != current_user.id and current_user.role.name not in [
             "Admin",
@@ -79,14 +98,17 @@ async def list_borrowings(
         borrowings, next_cursor = await borrowing_service.get_user_borrowings(
             user_id=user_id, limit=limit, cursor=cursor
         )
+    # Filter by book
     elif book_id:
         borrowings, next_cursor = await borrowing_service.get_book_borrowings(
             book_id=book_id, limit=limit, cursor=cursor
         )
+    # Active borrowings only
     elif active_only:
         borrowings, next_cursor = await borrowing_service.get_active_borrowings(
             limit=limit, cursor=cursor
         )
+    # Default: current user's borrowings
     else:
         borrowings, next_cursor = await borrowing_service.get_user_borrowings(
             user_id=current_user.id, limit=limit, cursor=cursor
